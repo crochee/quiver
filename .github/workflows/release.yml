@@ -26,7 +26,7 @@ jobs:
           mv dist/quiver.exe dist/quiver-x86_64-pc-windows-gnu.exe
 
       # 2) Linux binary: 本机编译(release profile 已 opt-level=z/lto/strip)。
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@1.120
       - uses: Swatinem/rust-cache@v2
       - name: Build the Linux binary
         run: |
