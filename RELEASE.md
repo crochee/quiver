@@ -21,9 +21,13 @@ semver、可复现产物、零手工步骤 —— 产物全部由 CI 构建, 人
 3. **打 tag**: `git tag -s vX.Y.Z -m "quiver vX.Y.Z"`(签署 tag)并推送。
 4. **CI 出产物**: tag 触发 `.github/workflows/release.yml`, 产出并附带
    校验和:
-   - `quiver-x86_64-pc-windows-gnu.exe` (Windows)
-   - `quiver-x86_64-unknown-linux-gnu` (Linux)
+   - `quiver-x86_64-pc-windows-gnu.exe` (Windows, GNU ABI; 走 mingw-w64)
+   - `quiver-x86_64-unknown-linux-gnu` (Linux, x86_64)
+   - `quiver-aarch64-apple-darwin` (macOS, arm64; M1/M2/M3/M4)
    - `sha256sums.txt`
+
+   macOS runner 是 GitHub-hosted `macos-14`(原生 arm64, 不走 qemu/osxcross);
+   不出 Intel 版, Rosetta 用户装 arm64 二进制即可。
 5. **发布说明**: 把第 2 步的记录贴进 GitHub Release, 校验产物
    (`sha256sum -c`)后 publish。
 6. **dotfiles 联动**(本工作站): Windows 侧 `sync-windows-host.sh` 会拉取

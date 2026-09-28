@@ -12,7 +12,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  # Linux + Windows 一起在 ubuntu 上出。Windows 走 docker buildx 交叉,
+  # Linux 走 host cargo build, 输出物全部入 dist/, 由 release job 汇总。
+  linux-windows:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,10 +35,61 @@ jobs:
           cargo build --release --locked
           cp target/release/quiver dist/quiver-x86_64-unknown-linux-gnu
 
-      # 3) 校验和。
-      - name: Checksums
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-windows
+          if-no-files-found: error
+          path: |
+            dist/quiver-x86_64-pc-windows-gnu.exe
+            dist/quiver-x86_64-unknown-linux-gnu
+
+  # macOS arm64: M 系列 Mac 用。GitHub-hosted macos-14 runner 本来就是 arm64,
+  # 不需要 osxcross/lipo 也不需要 qemu; 走 host cargo build --release 即可。
+  # 与 macos-13 同架构, 仅 SDK 新一点; 不出 intel 版是设计上不覆盖 Rosetta 用户。
+  macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the macOS binary
         run: |
-          cd dist && sha256sum * > sha256sums.txt && cat sha256sums.txt
+          cargo build --release --locked --target aarch64-apple-darwin
+          mkdir -p dist
+          cp target/aarch64-apple-darwin/release/quiver \
+             dist/quiver-aarch64-apple-darwin
+          # Mach-O 没了 linker-strip, strip 一次把符号表清掉, 体积与 Linux 一致。
+          strip dist/quiver-aarch64-apple-darwin
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-arm64
+          if-no-files-found: error
+          path: dist/quiver-aarch64-apple-darwin
+
+  # 等所有出产物 job 跑完, 汇总算校验和 + 推 release。一个 job 只能触发一次
+  # softprops/action-gh-release, 否则会撞到 duplicate tag; 所以这一步放最后。
+  release:
+    needs: [linux-windows, macos-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+
+      - name: Flatten + checksums
+        run: |
+          cd dist
+          # upload-artifact 解出来是 linux-windows/quiver-..., macos-arm64/quiver-...
+          # 这种嵌套, 平铺到 dist/ 顶层再算校验和。
+          find . -mindepth 2 -type f -exec mv -t . {} +
+          sha256sum * > sha256sums.txt
+          ls -l
+          cat sha256sums.txt
 
       - name: Release
         uses: softprops/action-gh-release@v3
@@ -46,4 +99,5 @@ jobs:
           files: |
             dist/quiver-x86_64-pc-windows-gnu.exe
             dist/quiver-x86_64-unknown-linux-gnu
+            dist/quiver-aarch64-apple-darwin
             dist/sha256sums.txt
