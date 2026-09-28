@@ -1,0 +1,10 @@
+[toolchain]
+# Pinned to the exact patch release the Dockerfile's RUST_IMAGE default
+# names (rust:1.98.1-slim-bookworm). The patch number matters: the image
+# ships 1.98.1, and a bare "1.98" makes rustup auto-install a *second*
+# ~300 MB toolchain on every container run (rustup's deprecated
+# partial-match path). Bump this together with the Dockerfile's
+# RUST_IMAGE default — two lines, one review.
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

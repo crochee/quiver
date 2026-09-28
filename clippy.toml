@@ -1,0 +1,23 @@
+# Local clippy configuration for quiver.
+#
+# Carries the allow-*-in-tests subset of the workspace-level knobs the
+# dotfiles repo pins for its Rust crates (see ~/workspace/cim/clippy.toml);
+# the thresholds and disallowed-methods there target crates this one does
+# not share, so they are not mirrored. Single-crate repos apply these
+# directly; this file holds the package-wide knobs only clippy.toml can
+# express.
+
+# Lints that only clippy.toml can declare.
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-dbg-in-tests = true
+
+# Spellings the crate uses unbackticked in doc comments that would trip
+# clippy::doc_markdown. The leading ".." APPENDS to clippy's built-in list
+# (an assignment without it REPLACES the default, which once dropped
+# `OpenTelemetry` and failed `make lint` on a fresh checkout) — keep it.
+# `PowerShell` is the one load-bearing entry: it fires clippy's camel-case
+# heuristic and appears unbackticked in platform.rs's docs. All-caps words
+# (JSON, MSVC, POSIX) and lowercase-starting names (fzf, kubectl) never
+# trip the heuristic, so they are not listed.
+doc-valid-idents = ["..", "PowerShell"]

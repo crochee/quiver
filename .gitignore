@@ -1,0 +1,15 @@
+target/
+dist/
+dist-test/
+*.pdb
+
+# secrets / local noise (对齐 ~/workspace/cim 的忽略集)
+.env
+.env.*
+*.key
+*.pem
+id_rsa*
+**/*.rs.bk
+.DS_Store
+.idea/
+.vscode/

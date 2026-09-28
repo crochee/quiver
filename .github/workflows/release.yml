@@ -1,0 +1,49 @@
+# Release — tag 推送自动出产物与校验和(流程见 RELEASE.md)。
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) Windows PE: docker 多阶段交叉编译(与 make windows 同链路)。
+      - uses: docker/setup-buildx-action@v3
+      - name: Cross-compile the Windows PE
+        run: |
+          docker buildx build --target artifact \
+            --output type=local,dest=dist .
+          mv dist/quiver.exe dist/quiver-x86_64-pc-windows-gnu.exe
+
+      # 2) Linux binary: 本机编译(release profile 已 opt-level=z/lto/strip)。
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the Linux binary
+        run: |
+          cargo build --release --locked
+          cp target/release/quiver dist/quiver-x86_64-unknown-linux-gnu
+
+      # 3) 校验和。
+      - name: Checksums
+        run: |
+          cd dist && sha256sum * > sha256sums.txt && cat sha256sums.txt
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/quiver-x86_64-pc-windows-gnu.exe
+            dist/quiver-x86_64-unknown-linux-gnu
+            dist/sha256sums.txt

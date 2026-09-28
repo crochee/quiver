@@ -1,0 +1,62 @@
+{
+  "$comment": "Sample Quiver catalog for offline smoke tests. NOT for production Wox — replace with your own aliases. Field contract and placeholders documented in ~/.dotfiles/docs/wox/README.md §3.",
+  "version": 1,
+  "defaultInterpreter@windows": "powershell",
+  "defaultInterpreter@darwin": "bash",
+  "defaultInterpreter@linux": "bash",
+  "defaultWorkingDirectory": "$HOME",
+  "defaultWorkingDirectory@windows": "$USERPROFILE",
+  "commands": [
+    {
+      "alias": "echo",
+      "command": "echo {query}",
+      "description": "Echo the query back — the `{query}` placeholder is replaced verbatim (no shell escaping).",
+      "tags": ["demo", "text"]
+    },
+    {
+      "alias": "ip",
+      "command": "ip route get 1.1.1.1 | sed -n 's/.* src \\([0-9.]\\+\\) .*/\\1/p'",
+      "interpreter": "bash",
+      "capture": true,
+      "description": "Primary outbound IPv4 (Linux): the `src` address of the default route. Enter copies it. `capture: true` runs at query time so the result lands on the clipboard via Wox's `copy-to-clipboard` action. (No `awk '{print $N}'` here — the plugin's `$N` substitution blanks a bare `$N` before bash ever sees it; see §3.1 for the `${N}` spelling.)",
+      "tags": ["demo", "net"]
+    },
+    {
+      "alias": "ip-win",
+      "command": "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback' } | Select-Object -First 1 -ExpandProperty IPAddress)",
+      "interpreter": "powershell",
+      "capture": true,
+      "description": "Primary outbound IPv4 (Windows PowerShell). The same capture contract on the other interpreter; `interpreter: powershell` is only honored on Windows builds.",
+      "tags": ["demo", "net"]
+    },
+    {
+      "alias": "wk",
+      "command": "cd $HOME/workspace && explorer .",
+      "silent": true,
+      "description": "Open `$HOME/workspace` in Explorer; `silent: true` makes Wox hide immediately after Enter, leaving the action running detached.",
+      "tags": ["demo", "fs"]
+    },
+    {
+      "alias": "k",
+      "command": "kubectl $@",
+      "interpreter": "bash",
+      "description": "`qv k get pods -o wide` — `kubectl` receives all arguments verbatim via `$@`. Custom-Commands-style placeholders, joined by one space.",
+      "tags": ["demo", "k8s"]
+    },
+    {
+      "alias": "upper",
+      "command": "sh -c 'python3 -c \"import sys; print(sys.argv[1].upper())\" \"${1}\"' sh \"$1\"",
+      "interpreter": "bash",
+      "tags": ["demo", "text"],
+      "description": "Uppercase the first positional: `qv upper hello` prints HELLO. The inner `\"${1}\"` (braced) escapes the plugin's outer `$N` substitution and reaches the inner `sh`; the trailing `\"$1\"` is substituted by the plugin at query time and handed to that inner shell as its first positional."
+    },
+    {
+      "alias": "now",
+      "command": "date -u +%Y-%m-%dT%H:%M:%SZ",
+      "interpreter": "bash",
+      "capture": true,
+      "description": "ISO-8601 UTC timestamp. A minimal `capture: true` example: the entry's stdout is the clipboard payload.",
+      "tags": ["demo", "time"]
+    }
+  ]
+}

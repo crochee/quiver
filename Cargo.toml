@@ -1,0 +1,142 @@
+[package]
+name = "quiver"
+version = "0.1.0"
+edition = "2024"
+# MSRV is 1.91: edition 2024 sets the syntax floor at 1.85, but this crate
+# also relies on let-chains (`if let … && …`), stable since 1.88, and the
+# standard library / `tracing` macros involved are clean from 1.91 onward.
+# Bumping the version is the right move rather than chasing MSRV with
+# nested-if rewrites.
+rust-version = "1.91"
+description = "Quiver — a native Wox script plugin: a quiver of shell one-liners, as a Rust binary driven by a `tracing`-instrumented JSON-RPC bridge over `serde_json`"
+license = "MIT"
+repository = "https://github.com/crochee/dotfiles"
+homepage = "https://github.com/crochee/dotfiles/tree/main/quiver"
+readme = "README.md"
+keywords = ["wox", "launcher", "plugin", "shell", "fuzzy"]
+categories = ["command-line-utilities", "development-tools"]
+publish = false
+autobins = false
+
+# The extension-less discovery stub is resolved to `quiver.exe` by the Windows
+# PATHEXT lookup Wox's Go runtime performs, so the binary and the stub share
+# the name `quiver` (see src/stub.rs and docs/wox/README.md §4.3).
+[[bin]]
+name = "quiver"
+path = "src/main.rs"
+# `test = false` would disable unit tests for the bin target — the
+# integration suite (`cargo test --release`) compiles and runs them, so
+# we leave the default (`true`) in effect.
+bench = false
+
+# ---- dependencies ------------------------------------------------------
+# Six crates, all pulled from the same release-train versions cim pins
+# (`~/workspace/cim/Cargo.toml`). Feature sets are kept deliberately
+# minimal — every default-feature we don't need is opted out — so the
+# artifact stays small and the build stays fast.
+#
+#   `serde` is the derive layer (`Serialize` for the JSON-RPC envelopes, the
+#   result-row shape, and the Wox discovery metadata; `Deserialize` for the
+#   catalog loader). Pulled with `derive` only — the rest of `serde`'s
+#   features (Rc/Arc support, arbitrary-precision ints, …) are unused.
+#
+#   `serde_json` is the JSON engine: RFC-8259-strict parsing (leading zeros
+#   and raw control characters rejected, line:column errors), float support,
+#   and a `Value` the wire layer reads as it lands (the request envelope has
+#   an opaque trace `id` of string/number/null, deliberately not deserialized
+#   into a typed struct — see `src/protocol.rs`). `preserve_order` keeps
+#   object key order stable across parse→serialize so the stub file and the
+#   wire envelopes stay byte-stable for the tests and for humans diffing
+#   them.
+#
+#   `tracing` provides the macro layer (`info!`, `warn!`, …) and the
+#   `Subscriber` trait the writer layer talks to; `std` is all we use — the
+#   macros are `#[inline]` so they vanish when no subscriber is registered,
+#   and `attributes` (`#[instrument]`) is not pulled because nothing in this
+#   crate uses it.
+#
+#   `tracing-subscriber` provides the `fmt` writer (stderr, compact
+#   single-line records) and the standard `EnvFilter` directive parser for
+#   `QUIVER_LOG`/`RUST_LOG`. `src/log.rs` floors every directive at `error`
+#   (see there) so a typo'd level can no longer silence error output.
+#
+#   `fuzzy-matcher` is the launcher-rank scorer behind `src/fuzzy.rs`. The
+#   crate used to carry a 500+-line transcription of Wox's
+#   `fuzzy_match.go`; switching to `SkimMatcherV2` (the same fzf-v2 family)
+#   removes the port and pins the algorithm to its reference implementation
+#   (skim), exercised daily by every fzf user. Two deliberate divergences
+#   from a bare dependency: ASCII-only fallback for non-ASCII needles
+#   (`substring` in `src/fuzzy.rs`), and verbatim-on-miss via the lookup
+#   closure.
+#
+#   `shellexpand` covers `~` / `$X` / `${X}` in `src/spawn.rs::expand_env`.
+#   Only the `base-0` and `dirs` features are pulled (no `path` /
+#   `os_str_bytes`) so the artifact stays string-typed. The default
+#   `tilde` feature is enabled transitively through `dirs`. We do **not**
+#   use `shellexpand` for `%X%` — cmd syntax is POSIX-foreign — and
+#   `spawn.rs` keeps a small pre-pass for it.
+[dependencies]
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "fmt",
+    "ansi",
+    "env-filter",
+] }
+# `serde` is the derive layer (`Serialize` for the JSON-RPC envelopes and the
+# Wox discovery metadata, `Deserialize` for the catalog loader). Pulled with
+# `derive` only — the rest of `serde`'s features (Rc/Arc support, arbitrary
+# precision ints, …) are unused.
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false, features = [
+    "std",
+    "preserve_order",
+] }
+fuzzy-matcher = { version = "0.3", default-features = false }
+shellexpand = { version = "3.1", default-features = false, features = [
+    "base-0",
+    "dirs",
+] }
+
+# Unix-only: `killpg` for reaping a capture child's whole process tree
+# (`sh -lc 'a; b'` grandchildren survive a bare `Child::kill` and hold the
+# output pipes open). std links libc anyway; this makes the dependency
+# explicit for the one call platform.rs needs.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# ---- features (placeholder) ---------------------------------------------
+# Quiver has no features today; declaring the table here so a future
+# addition does not need a Cargo.toml schema migration. The reserved
+# `default = []` keeps `cargo build --no-default-features` working.
+[features]
+default = []
+
+[lints]
+# Single-crate analog of `[workspace.lints.rust]` — the workspace file is
+# only consulted by crates that opt in via `[lints] workspace = true`, but
+# here we are the package, so we declare the gates inline. Carries the
+# allow-*-in-tests subset of ~/workspace/cim's pins.
+#
+# `unreachable_pub` is allow-by-default in rustc and is intentionally not
+# configured here: this is a bin-only crate (no downstream consumers), so
+# module-level `pub` is the crate's internal API surface and the lint has
+# nothing real to report.
+rust.missing_debug_implementations = "deny"
+rust.missing_copy_implementations = "deny"
+
+clippy.dbg_macro = "deny"
+clippy.todo = "deny"
+clippy.clone_on_ref_ptr = "deny"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+incremental = false
+
+# Quiver never uses the dev profile in CI (everything runs through `make
+# test`, which builds `--release`); the release profile gets
+# `incremental = false` to keep CI caches reproducible, while dev stays at
+# its incremental default so editor iteration stays cheap.

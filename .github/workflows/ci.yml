@@ -1,0 +1,80 @@
+# CI — every PR and push to main.
+# CNCF 式护栏: fmt + clippy(-D warnings) + 单元测试 + 离线冒烟 + MSRV +
+# Windows 交叉编译产物, 全绿才可合。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --release --all-targets -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      # 单元测试里 capture/action 用例跑真实子进程(bash/sh), ubuntu-latest 自带。
+      - run: cargo test --release --locked
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - run: make smoke
+
+  msrv:
+    # 声明的 MSRV(Cargo.toml rust-version = 1.91)是契约: 依赖更新把它顶过线
+    # 时在这里被拦下, 而不是在用户的旧工具链上炸开。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91
+      - run: cargo +1.91 check --release --locked
+
+  windows-cross:
+    # docker buildx 多阶段交叉编译出 Windows PE —— 与 make windows 同一链路,
+    # 证明 Dockerfile 本身没漂。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the Windows artifact
+        run: |
+          docker buildx build --target artifact \
+            --output type=local,dest=dist .
+          test -x dist/quiver.exe
+          file dist/quiver.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quiver-windows-ci
+          path: dist/quiver.exe
+          if-no-files-found: error
