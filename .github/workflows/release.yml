@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # 1) Windows PE: docker 多阶段交叉编译(与 make windows 同链路)。
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Cross-compile the Windows PE
         run: |
           docker buildx build --target artifact \
