@@ -15,7 +15,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 1) Windows PE: docker 多阶段交叉编译(与 make windows 同链路)。
       - uses: docker/setup-buildx-action@v4
