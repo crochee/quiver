@@ -18,3 +18,9 @@ updates:
     commit-message:
       prefix: "chore(ci)"
     labels: ["dependencies", "ci"]
+    # dtolnay/rust-toolchain 的 version 字段被 dependabot 当成 Rust 版本号比对,
+    # 但它的 tag/版本命名(1.x.y) 与 Rust 自身 minor 完全脱钩, dependabot 会提
+    # 出根本不存在的 Rust release(例: 1.120), 让 CI 的 rustup 直接 404。
+    # 工具链 bump 走人工评审, 改 rust-toolchain 文件 + Dockerfile RUST_IMAGE 两处。
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
