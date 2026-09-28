@@ -87,6 +87,9 @@ jobs:
           # upload-artifact 解出来是 linux-windows/quiver-..., macos-arm64/quiver-...
           # 这种嵌套, 平铺到 dist/ 顶层再算校验和。
           find . -mindepth 2 -type f -exec mv -t . {} +
+          # mv 只搬文件不搬目录, 顶层空目录留着会让 `sha256sum *` 撞上 "Is a directory"。
+          # 先 `-empty` 删空的, 再 `-mindepth 1` 兜底删(即便残留非空也强制清)。
+          find . -mindepth 1 -depth -type d -empty -delete
           sha256sum * > sha256sums.txt
           ls -l
           cat sha256sums.txt
