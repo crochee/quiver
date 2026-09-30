@@ -1,0 +1,19 @@
+# CODEOWNERS — Quiver is a single-maintainer repository today; the
+# `@crochee` placeholder is replaced at the GitHub-org level when the
+# project gains co-maintainers or a sponsoring organisation. Until then
+# every file defaults to the repo owner.
+#
+# Patterns are last-match-wins; section comments group by domain.
+# Reference: <https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners>
+
+# Default for everything not matched below.
+/                                       @crochee
+
+# CI / supply-chain attestation is the highest-risk surface; require an
+# extra pair of eyes even from the owner before any change ships.
+/.github/                                @crochee
+/Dockerfile                              @crochee
+/build.rs                                @crochee
+
+# Release process is policy-bearing; the same gate.
+/RELEASE.md                              @crochee
