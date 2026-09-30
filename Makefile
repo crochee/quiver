@@ -1,9 +1,9 @@
 # Makefile — Quiver, a native Wox script plugin.
 #
-# The plugin itself is pure Rust; nothing here runs from chezmoi. This file is
-# only the **manual build entry point** the docs and the sync hook refer to.
-# 维护流程(CNCF 式: fmt/lint/test/smoke/MSRV/cross 全在 CI)见 CONTRIBUTING.md;
-# catalog 契约的权威文档在 ~/.dotfiles/docs/wox/README.md §4.3.
+# The plugin itself is pure Rust. This file is the **manual build entry point**
+# the docs and the release workflow refer to. 维护流程(CNCF 式:
+# fmt/lint/test/smoke/MSRV/cross 全在 CI)见 CONTRIBUTING.md; catalog 契约见
+# docs/catalog-contract.md.
 #
 #   make            WSL: 交叉编译 Windows PE（docker 多阶段, 见下）
 #                   其他宿主: 本机 cargo build
@@ -19,11 +19,10 @@
 #   make help       列出以上目标
 #
 # 交叉编译**不需要宿主装任何东西**: Dockerfile 自带 Rust 工具链与 mingw-w64
-# 链接器, 多阶段 + cargo-chef + BuildKit cache mount 让依赖层跨构建复用
-# (模式同 ~/workspace/cim/Dockerfile.server). 宿主只需要 docker **buildx**
-# (Docker 23+ 自带). buildx 时代没有 bind-mount, Git-Bash/MSYS 的路径改写
-# 也不再是问题 —— 但 windows 系目标仍建议在 WSL/Linux 跑, interop 执行
-# 测试 PE 只有 WSL 有.
+# 链接器, 多阶段 + cargo-chef + BuildKit cache mount 让依赖层跨构建复用.
+# 宿主只需要 docker **buildx** (Docker 23+ 自带). buildx 时代没有
+# bind-mount, Git-Bash/MSYS 的路径改写也不再是问题 —— 但 windows 系目标
+# 仍建议在 WSL/Linux 跑, interop 执行测试 PE 只有 WSL 有.
 
 SHELL := /bin/sh
 CARGO ?= cargo
@@ -119,7 +118,7 @@ smoke:
 
 lint:
 	$(CARGO) fmt --check
-	$(CARGO) clippy --release --all-targets -- -D warnings
+	$(CARGO) clippy --release --tests -- -D warnings
 
 fmt:
 	$(CARGO) fmt

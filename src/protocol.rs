@@ -784,7 +784,8 @@ fn longest_backtick_run(s: &str) -> usize {
 ///
 /// This bounds what *leaves* the plugin. The child's output is already fully
 /// buffered by `Command::output` before this runs, which is why a `capture`
-/// entry must be a quick, bounded lookup (see `docs/wox/README.md` §6).
+/// entry must be a quick, bounded lookup (see `docs/catalog-contract.md §5`
+/// for the deadline trade-off).
 fn truncate_stream(s: &str) -> String {
     const MAX_PREVIEW_LINES: usize = 200;
     const MAX_PREVIEW_BYTES: usize = 64 * 1024;

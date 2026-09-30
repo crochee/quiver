@@ -1,11 +1,9 @@
 # Local clippy configuration for quiver.
 #
-# Carries the allow-*-in-tests subset of the workspace-level knobs the
-# dotfiles repo pins for its Rust crates (see ~/workspace/cim/clippy.toml);
-# the thresholds and disallowed-methods there target crates this one does
-# not share, so they are not mirrored. Single-crate repos apply these
-# directly; this file holds the package-wide knobs only clippy.toml can
-# express.
+# Single-crate repo: this file holds the package-wide knobs only
+# clippy.toml can express. Thresholds and disallowed-methods from
+# multi-crate workspace pins are not mirrored here — they target crates
+# this one does not share.
 
 # Lints that only clippy.toml can declare.
 allow-expect-in-tests = true

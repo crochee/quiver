@@ -1,5 +1,5 @@
 {
-  "$comment": "Sample Quiver catalog for offline smoke tests. NOT for production Wox — replace with your own aliases. Field contract and placeholders documented in ~/.dotfiles/docs/wox/README.md §3.",
+  "$comment": "Sample Quiver catalog for offline smoke tests. NOT for production Wox — replace with your own aliases. Field contract and placeholders documented in docs/catalog-contract.md §3.",
   "version": 1,
   "defaultInterpreter@windows": "powershell",
   "defaultInterpreter@darwin": "bash",

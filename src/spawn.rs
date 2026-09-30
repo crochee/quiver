@@ -9,7 +9,7 @@
 //!   10 s script budget.
 //! * [`run_capture`] — a `capture` query: run to completion and hand back the
 //!   output, which is the only way a script plugin can show it (see
-//!   `docs/wox/README.md` §4.8).
+//!   `docs/catalog-contract.md §5`).
 //!
 //! Both detach the child from this process's console (`platform::detach`).
 //!
@@ -243,7 +243,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// Only `capture: true` catalog entries use this. Running at **query** time is
 /// the one way a script plugin can surface a command's output in the launcher:
 /// the query response's `preview` field is the only field Wox renders that the
-/// script controls (see `docs/wox/README.md` §4.8). The wait is doubly
+/// script controls (see `docs/catalog-contract.md §5`). The wait is doubly
 /// bounded — by Wox's `scriptExecutionTimeout` (10 s by default; override
 /// with `WOX_SCRIPT_EXECUTION_TIMEOUT`) *and* by the plugin-local
 /// [`CAPTURE_DEADLINE`] below it, which kills a hung child rather than

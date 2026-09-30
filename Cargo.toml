@@ -1,6 +1,6 @@
 [package]
 name = "quiver"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 # MSRV is 1.91: edition 2024 sets the syntax floor at 1.85, but this crate
 # also relies on let-chains (`if let … && …`), stable since 1.88, and the
@@ -10,17 +10,29 @@ edition = "2024"
 rust-version = "1.91"
 description = "Quiver — a native Wox script plugin: a quiver of shell one-liners, as a Rust binary driven by a `tracing`-instrumented JSON-RPC bridge over `serde_json`"
 license = "MIT"
-repository = "https://github.com/crochee/dotfiles"
-homepage = "https://github.com/crochee/dotfiles/tree/main/quiver"
+repository = "https://github.com/crochee/quiver"
+homepage = "https://github.com/crochee/quiver"
 readme = "README.md"
 keywords = ["wox", "launcher", "plugin", "shell", "fuzzy"]
 categories = ["command-line-utilities", "development-tools"]
+# Quiver is distributed as a GitHub release artefact, not a crates.io
+# crate: the binary is a Wox plugin, the unit of consumption is the
+# release zip, and the `docs.rs` flow doesn't apply. `cargo publish`
+# would fail today anyway because Wox-specific fields (TriggerKeywords,
+# SupportedOS) aren't in the public type surface.
 publish = false
 autobins = false
 
+# `build.rs` is a tiny shim (no extra deps) that injects the build-time
+# git commit, profile, and timestamp as `QUIVER_GIT_SHA` /
+# `QUIVER_BUILD_PROFILE` / `QUIVER_BUILD_TIME` env-vars at link time, so
+# `--version` and the Wox discovery stub carry the exact commit the
+# artefact was cut from. See `build.rs` for the resolution order.
+build = "build.rs"
+
 # The extension-less discovery stub is resolved to `quiver.exe` by the Windows
 # PATHEXT lookup Wox's Go runtime performs, so the binary and the stub share
-# the name `quiver` (see src/stub.rs and docs/wox/README.md §4.3).
+# the name `quiver` (see src/stub.rs and docs/catalog-contract.md §3).
 [[bin]]
 name = "quiver"
 path = "src/main.rs"
@@ -30,10 +42,9 @@ path = "src/main.rs"
 bench = false
 
 # ---- dependencies ------------------------------------------------------
-# Six crates, all pulled from the same release-train versions cim pins
-# (`~/workspace/cim/Cargo.toml`). Feature sets are kept deliberately
-# minimal — every default-feature we don't need is opted out — so the
-# artifact stays small and the build stays fast.
+# Six crates, version pins chosen for minimal feature surface — every
+# default-feature we don't need is opted out — so the artifact stays
+# small and the build stays fast.
 #
 #   `serde` is the derive layer (`Serialize` for the JSON-RPC envelopes, the
 #   result-row shape, and the Wox discovery metadata; `Deserialize` for the
@@ -114,8 +125,7 @@ default = []
 [lints]
 # Single-crate analog of `[workspace.lints.rust]` — the workspace file is
 # only consulted by crates that opt in via `[lints] workspace = true`, but
-# here we are the package, so we declare the gates inline. Carries the
-# allow-*-in-tests subset of ~/workspace/cim's pins.
+# here we are the package, so we declare the gates inline.
 #
 # `unreachable_pub` is allow-by-default in rustc and is intentionally not
 # configured here: this is a bin-only crate (no downstream consumers), so
