@@ -1,82 +1,91 @@
-# Quiver 安装与使用指南
+# Quiver — installation & usage guide
 
-> 30 秒版本: 装好 Wox → 把 `quiver` 二进制和存根放进 Wox 插件目录 → 在
-> `~/.wox/wox-user/ShellCommands.json` 里写一条 alias → 按 `Alt+Space` 输入
-> `qv` 回车。全文围绕这条链路展开, 排查不了再看后面几节。
+> 30-second version: install Wox → put the `quiver` binary and stub into the Wox plugin
+> directory → write one alias in `~/.wox/wox-user/ShellCommands.json` → press
+> `Alt+Space`, type `qv`, hit Enter. The full guide walks through that path in order;
+> skip to the troubleshooting table if you're stuck.
 
-## Quiver 是什么
+## What Quiver is
 
-一个 Wox 启动器的**原生脚本插件**: 把 `ShellCommands.json` 里的每条 alias
-变成一支"箭" —— 关键字唤起、回车发射。Rust 单二进制, 无 Python / Node.js
-运行时, Wox 每次按键直接 exec 它, stdin 收一条 JSON-RPC、stdout 回一条。
+A **native script plugin** for the [Wox](https://github.com/Wox-launcher/Wox) launcher:
+each alias in `ShellCommands.json` becomes an arrow — nock with a keyword, loose with
+Enter. Single Rust binary, no Python / Node.js runtime. Wox `exec`s it directly per
+keypress: stdin receives one JSON-RPC request, stdout emits one response.
 
-- 触发词: **`qv`** 或 **`quiver`**
-- 仓库: 本仓 (`quiver/`), 上游为 dotfiles 子仓
-- 完整 catalog 契约权威文档: `~/.dotfiles/docs/wox/README.md` §3-§4
+- Trigger keywords: **`qv`** or **`quiver`**
+- Repository: <https://github.com/crochee/quiver>
+- Full catalog contract (`ShellCommands.json` field reference): see
+  [`catalog-contract.md`](catalog-contract.md)
 
-## 前置要求
+## Prerequisites
 
-| 组件 | 要求 | 说明 |
+| Component | Requirement | Notes |
 | :--- | :--- | :--- |
-| Wox | ≥ 2.0 | 脚本插件 runtime; 2.4.x 亦可 |
-| 操作系统 | Windows / Linux / macOS | 二进制按平台编译; Windows 为主要目标 |
-| `quiver` 二进制 | 见下"安装" | 单文件, 无依赖 |
-| 存根文件 | 见下"安装" | Wox 靠它发现插件 |
+| Wox | ≥ 2.0 | Script plugin runtime; 2.4.x confirmed working |
+| Operating system | Windows / Linux / macOS | Binary is platform-specific; Windows is the primary target |
+| `quiver` binary | See *Installation* below | Single file, no runtime deps |
+| Stub file | See *Installation* below | Wox discovers the plugin by parsing its leading comment block |
 
-## 安装
+## Installation
 
-### 方式 A: dotfiles 自动安装(推荐, 本工作站)
+### Option A — pre-built release (any machine)
 
-上游 dotfiles 仓已内置两遍式流程(`da` = `chezmoi apply`):
+1. **Get the binary** from the GitHub release page matching your host:
+   - Windows: `quiver-x86_64-pc-windows-gnu.exe`
+   - Linux: `quiver-x86_64-unknown-linux-gnu`
+   - macOS (Apple Silicon): `quiver-aarch64-apple-darwin`
 
-1. `make`(WSL 下走 docker 交叉编译)产出 `target/x86_64-pc-windows-gnu/release/quiver.exe`;
-2. `da` 把二进制经 `.chezmoiexternal.toml` 装到 `~/.local/bin/quiver`(POSIX)
-   / GitHub release 拉取 `quiver.exe`(Windows 侧 `sync-windows-host.sh`),
-   再用 `install-quiver-stub.sh` 渲染存根到 Wox 插件目录。
+   Or build from source (Option B).
 
-任何一环缺位都 warn-only 不 abort —— 缺哪补哪, 不会静默用旧二进制。
-详见 `~/.dotfiles/docs/wox/README.md` §4.3。
+2. **Place the binary**:
 
-### 方式 B: 手动安装(任何机器)
-
-1. **取二进制**: 从 GitHub Release 下载对应平台的 `quiver`(Linux/macOS)
-   或 `quiver.exe`(Windows), 或从源码构建:
-
-   ```sh
-   git clone <repo> && cd quiver
-   make                # WSL: docker 交叉编译出 Windows PE
-   # 或本机: make build
-   ```
-
-2. **放二进制**:
-
-   | 平台 | 位置 | 说明 |
+   | Platform | Location | Notes |
    | :--- | :--- | :--- |
-   | Windows | `~\.wox\wox-user\plugins\scripts\` 同目录 | 与存根同名 `quiver.exe` |
-   | Linux/macOS | `~/.local/bin/quiver`(须在 PATH 中) | 存根 shebang 按 PATH 找它 |
+   | Windows | `~\.wox\wox-user\plugins\scripts\` (same directory as the stub) | Same basename as the stub: `quiver.exe`. Windows' `PATHEXT` resolves the extension-less stub to the sibling `.exe`. |
+   | Linux / macOS | `~/.local/bin/quiver` (must be on `PATH`) | The stub's shebang resolves the interpreter by basename, so `PATH` lookup is the only way. |
 
-3. **渲染存根**(Wox 靠扫描插件目录的头部注释发现插件):
+3. **Render the stub** (Wox discovers the plugin by parsing the leading `#`/`//` comment
+   block as JSON; the stub renderer writes exactly that):
 
    ```sh
    quiver --stub windows > ~/.wox/wox-user/plugins/scripts/quiver      # Windows
    quiver --stub posix   > ~/.wox/wox-user/plugins/scripts/quiver.sh   # Linux/macOS
    ```
 
-4. **重载**: Wox 用 fsnotify 监听插件目录, 放好文件即自动发现; 若没有,
-   重启一次 Wox。
+4. **Reload**: Wox uses fsnotify to watch the plugin directory — drop the files in and
+   the plugin shows up immediately. If it doesn't, restart Wox once.
 
-### 验证安装
+### Option B — build from source
+
+```sh
+git clone https://github.com/crochee/quiver
+cd quiver
+make                # WSL: docker cross-build of Windows PE
+# or, on a host with rust installed:
+make build
+```
+
+Then place the binary + render the stub as in Option A, steps 2-3.
+
+WSL uses `make windows`, which builds inside a Docker image — no host Rust toolchain or
+mingw-w64 linker required; only docker with buildx (Docker 23+ ships it). On WSL the
+default goal is the Windows PE because that's the binary Wox loads. On native Linux /
+macOS the default goal is the host-native binary; cross-builds are still one `make
+windows` away.
+
+### Verify the install
 
 ```sh
 echo '{"jsonrpc":"2.0","id":1,"method":"query","params":{"search":"now"}}' \
-  | quiver          # 应输出一段 JSON, 含 "result":{"items":[...]}
+  | quiver          # should print a JSON envelope containing "result":{"items":[...]}
 ```
 
-按 `Alt+Space` 输入 `qv` —— 看到箭袋图标与示例条目即为成功。
+Press `Alt+Space`, type `qv` — the quiver icon and your sample entries confirm the
+plugin loaded.
 
-## 第一个 alias(3 行上手)
+## First alias (3-line starter)
 
-编辑 `~/.wox/wox-user/ShellCommands.json`:
+Edit `~/.wox/wox-user/ShellCommands.json`:
 
 ```json
 {
@@ -86,106 +95,114 @@ echo '{"jsonrpc":"2.0","id":1,"method":"query","params":{"search":"now"}}' \
 }
 ```
 
-保存即生效(fsnotify)。`Alt+Space` → `yt 猫片` → 回车。就这么多。
+Save → `Alt+Space` → `yt cats` → Enter. That's the whole loop.
 
-## 字段速查表
+## Field cheat-sheet
 
-| 字段 | 类型 | 默认 | 作用 |
+For the full contract (defaults, edge cases, dispatcher rules, loader validation,
+cross-build invariants) see [`catalog-contract.md`](catalog-contract.md). Quick
+reference:
+
+| Field | Type | Default | Effect |
 | :--- | :--- | :--- | :--- |
-| `alias` | string | 必填 | 触发名; 大小写不敏感; 重复时**第一条生效**并告警 |
-| `command` | string | 必填 | 命令文本; 空缺/非字符串的条目被跳过并告警 |
-| `interpreter` | string | 平台默认 | `bash`/`sh`/`zsh`(POSIX), `powershell`/`cmd`/`bash`/`python`/`node`(Windows); 其他值按可执行文件原样分发 |
-| `workingDirectory` | string | 无(继承) | 子进程 cwd; 相对路径按 **home** 解析; 不存在则告警并继承 |
-| `silent` | bool | `false` | `true` = 回车后启动器**立即隐藏**(命令照常后台跑); `false` = 保持打开 |
-| `capture` | bool | `false` | `true` = 查询时同步执行, 输出进右侧预览, 回车=复制首行到剪贴板 |
-| `enabled` | bool | `true` | `false` = 隐藏该条(不参与匹配) |
-| `tags` | string[] | `[]` | 发现辅助; tag 命中永远排在 alias 命中之后 |
-| `description` | string | 命令本身 | 结果行的副标题 |
+| `alias` | string | required | trigger name; case-insensitive; duplicates — first wins |
+| `command` | string | required | command text; empty / non-string entries skipped with `WARN` |
+| `interpreter` | string | OS default | `bash`/`sh`/`zsh` (POSIX), `powershell`/`cmd`/`bash`/`python`/`node` (Windows); anything else dispatched as opaque executable |
+| `workingDirectory` | string | inherit | child cwd; relative paths resolve against **home**; missing dir → `WARN`, inherit |
+| `silent` | bool | `false` | `true` = launcher hides itself on Enter (command still runs detached) |
+| `capture` | bool | `false` | `true` = run synchronously on query, output → preview, Enter = copy first line of stdout |
+| `enabled` | bool | `true` | `false` = hidden (note: must be JSON `false`, not string `"false"`) |
+| `tags` | string[] | `[]` | discovery aid; tag hits always rank below alias hits |
+| `description` | string | the command itself | result-row subtitle |
 
-顶层默认值: `defaultInterpreter(@windows/@darwin/@linux)`、
-`defaultWorkingDirectory(同后缀)` —— 后缀键优先, 共享一份 catalog 的
-多台机器各自取各自的。
+Top-level defaults: `defaultInterpreter(@windows/@darwin/@linux)`,
+`defaultWorkingDirectory(同后缀)` — OS-suffixed keys win, so a single catalog file works
+across heterogeneous machines.
 
-## 占位符
+## Placeholders
 
-| 写法 | 替换时机 | 展开为 |
+| Form | When | Expands to |
 | :--- | :--- | :--- |
-| `{query}` | 查询时(alias 前缀命中) | alias 之后的**原始文本**(含空格, 不转义) |
-| `$@` | 查询时(精确命中) | 全部参数, 空格连接 |
-| `$1`…`$9` | 查询时(精确命中) | 第 N 个参数; 越界/缺省=空串 |
-| `${1}`… | **不**替换 | 留给**内层 shell** 的位置参数(见下) |
+| `{query}` | query time, on alias prefix match | everything after the alias, **raw** (spaces preserved, **unescaped**) |
+| `$@` | query time, on exact alias match | all positional args, joined by single spaces |
+| `$1`…`$9` | query time, on exact alias match | the Nth positional arg; out-of-range → empty string |
+| `${1}`…`${N}` | **never substituted** | passed through to the inner shell as its own positional args |
 
-**内层 shell 传参的惯用法**(外层替换会吞掉裸 `$N`, 所以加 braces 躲过,
-再在结尾用裸 `$1` 把参数递进去):
+**Inner-shell handoff idiom** (outer substitution eats bare `$N`, so brace it to slip
+past, then re-introduce it with bare `$1` so the inner shell binds it as its own
+positional):
 
 ```json
 { "alias": "upper",
   "command": "sh -c 'python3 -c \"import sys; print(sys.argv[1].upper())\" \"${1}\"' sh \"$1\"" }
 ```
 
-`qv upper hello` → `HELLO`。
+`qv upper hello` → `HELLO`.
 
-替换是**纯文本**的(与上游 Custom Commands 同一注入面): 参数里带引号/分号
-会原样进入命令。需要安全引用时, 自己在 `command` 里加引号或用内层 sh。
+Substitution is **pure textual replacement** — same injection surface as upstream Wox
+Custom Commands. Arguments carrying quotes / metacharacters enter the command verbatim.
+Add your own quoting in `command` when shell semantics matter.
 
-## capture 与 silent 的语义
+## `capture` and `silent`
 
-- **`capture: true`**: 在**查询时**(而非回车时)同步跑命令 —— 这是脚本插件
-  能把输出给用户看的唯一窗口。右侧预览显示 stdout/stderr/退出码, 默认动作
-  变为"复制 stdout 首行"。命令必须在秒级返回(插件本地 8 s 硬上限, 超时杀
-  掉并在预览注明); 慢命令请改用 `silent: true`。
-- **`silent: true`**: 只决定**回车后启动器藏不藏**。执行本身永远脱离式
-  (detached)—— 命令总能跑完, 与启动器生命周期无关。
+- **`capture: true`** — runs the command **at query time**, not Enter time. The result is
+  the right-side preview; the primary action (Enter) becomes "copy the first line of
+  stdout to clipboard". This is the only moment a script plugin can show output to the
+  user.
+  - Must return within Wox's `WOX_SCRIPT_EXECUTION_TIMEOUT` (default 10 s). Quiver
+    enforces an additional 8 s local deadline with `killpg` cleanup.
+  - Slow commands belong on `silent: true`, not `capture: true`.
+- **`silent: true`** — only decides whether the launcher hides itself after Enter.
+  Execution is **always detached** (fire-and-forget); the command always finishes on its
+  own clock, independent of the launcher's lifetime.
 
-## 日志与排查
+## Logging & troubleshooting
 
-日志走 `tracing` → stderr, 被 Wox 收进它的日志文件。默认静默(仅 error):
+Logs flow through `tracing` → stderr, which Wox captures into its own log file. Default
+is silent (only `error`):
 
 ```sh
-QUIVER_LOG=info quiver       # info/warn/error
-QUIVER_LOG=debug quiver      # 全量(含每条 query 与 catalog 路径)
-QUIVER_LOG=quiver=debug,info # target 限定
-RUST_LOG=...                 # QUIVER_LOG 未设时的兼容入口
+QUIVER_LOG=info quiver       # info / warn / error
+QUIVER_LOG=debug quiver      # everything (per-query, catalog path discovery)
+QUIVER_LOG=quiver=debug,info # target-qualified
+RUST_LOG=...                 # compatibility alias when QUIVER_LOG is unset
 ```
 
-拼错的指令**不会**静默 —— 一律回落到 error 底线(errors always loud)。
+A typo'd directive never silently swallows output — every directive is floored at
+`error` (`errors always loud`).
 
-## Catalog 路径
-
-按以下优先级定位 `ShellCommands.json`:
-
-1. `QUIVER_PATH` —— **直接给文件路径**。优先级最高,常用于:
-   共享 NFS 家目录(每台机器的家目录相同)、per-project 配置仓、CI fixture。
-   ```sh
-   QUIVER_PATH=/opt/shared/quiver/team.json quiver
-   ```
-2. `WOX_DIRECTORY_USER_DATA` —— Wox 标准的目录变量;Quiver 拼上
-   `ShellCommands.json`。Wox 真实运行时就是这一档。
-3. 平台默认目录 + `ShellCommands.json`(`$HOME/.wox/wox-user/ShellCommands.json`
-   或 Windows 上的等价物)。
-
-空字符串(`QUIVER_PATH=""`)等同于未设,落到下一档。
-
-| 症状 | 先看 |
+| Symptom | First check |
 | :--- | :--- |
-| `qv` 无任何条目 | catalog 文件是否存在/可解析(看 `QUIVER_LOG=debug` 里 `catalog_load path` 一行确认实际加载的路径); 缺 `commands` 数组会得到一条"catalog unavailable"错误行; 想换路径时设 `QUIVER_PATH=/path/to/file.json` |
-| 条目没出现 | `enabled` 是否 `false`(字符串 `"false"` 无效, 须为 bool); alias 是否重复(第一条生效) |
-| 回车没反应 | `command` 是否为空(空命令条目装载时已被跳过); `interpreter` 该平台是否存在 |
-| 预览乱码 | Windows `cmd` 输出经 OEM 代码页回退解码; 若仍乱, 命令自身先 `chcp 65001` |
-| 想确认到底执行了什么 | `QUIVER_LOG=debug` 看 `query received` / `spawn detached` |
+| `qv` shows nothing | catalog exists and parses? (`QUIVER_LOG=debug` logs `catalog_load path`); missing `commands` array → "catalog unavailable" error line; set `QUIVER_PATH=/path/to/file.json` to override |
+| Entry doesn't appear | `enabled` is JSON `false` (not string `"false"`)? alias duplicated (first wins)? |
+| Enter does nothing | `command` empty (skipped at load)? `interpreter` exists on this platform? |
+| Preview is garbled | Windows `cmd` output goes through OEM-codepage fallback; `chcp 65001` inside the command if you need UTF-8 |
+| Want to confirm what ran | `QUIVER_LOG=debug` → look for `query received` / `spawn detached` |
 
-离线自检(不需要 Wox): `make smoke` —— 37 项检查覆盖 stub/协议/capture/
-action/日志全链路。
+Offline self-check (no Wox required): `make smoke` — 47 assertions covering stub /
+protocol / capture / action / logging end-to-end.
 
-## 扩展
+## Catalog path resolution
 
-- **加命令**: 只改 `ShellCommands.json`(数据驱动, 不动二进制)。
-- **换机器**: 同一份 catalog, 机器差异全部走 `@windows/@darwin/@linux`
-  后缀键。
-- **换/加解释器**: `src/platform.rs` 的 `INTERPRETERS` 表是唯一扩展点,
-  单文件评审即可加平台/解释器 —— 见 `CONTRIBUTING.md`。
+Same as [`catalog-contract.md §1`](catalog-contract.md#1-file-location):
 
-## 卸载
+1. `QUIVER_PATH` — full file path, highest priority
+2. `WOX_DIRECTORY_USER_DATA` — directory; Quiver joins `ShellCommands.json` (Wox's runtime path)
+3. Platform default — `$HOME/.wox/wox-user/ShellCommands.json` (POSIX) / Windows equivalent
 
-删掉插件目录里的存根(`quiver` / `quiver.sh`)与二进制, 再删
-`~/.wox/wox-user/ShellCommands.json`(如不再用)。Wox 下次扫描自动 forget。
+Empty `QUIVER_PATH=""` is treated as unset.
+
+## Extending Quiver
+
+- **Add a command**: edit `ShellCommands.json` only (data-driven; no rebuild).
+- **Move to a new machine**: same catalog file; per-OS differences go in the
+  `@windows/@darwin/@linux` suffix keys.
+- **Add or change an interpreter**: `src/platform.rs`'s `INTERPRETERS` table is the
+  single extension point — one-file review for new platforms / interpreters. See
+  [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+## Uninstall
+
+Delete the stub (`quiver` / `quiver.sh`) and binary from the plugin directory, and
+`~/.wox/wox-user/ShellCommands.json` (if no longer needed). Wox forgets the plugin on
+its next directory scan.

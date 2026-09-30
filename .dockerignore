@@ -1,8 +1,16 @@
 # 构建上下文白名单: 多阶段构建只需要 manifest + lock + src。
-# 星号先排除一切, 再显式放行 —— .git 历史、target/、文档、IDE 文件
+# 星号先排除一切, 再显式放行 —— .git 历史(除了 build.rs 解析
+# `git rev-parse HEAD` 需要的 HEAD 指针)、target/、文档、IDE 文件
 # 一概进不了 docker daemon。
 *
 !Cargo.toml
 !Cargo.lock
 !src
 !src/**
+!build.rs
+# Local `make windows` builds rely on build.rs's `git rev-parse HEAD`
+# fallback; CI overrides via `--build-arg QUIVER_GIT_SHA=...` and ignores
+# this. Only the HEAD pointer matters — full history stays out of the
+# context to keep buildx fast.
+!.git
+!.git/HEAD

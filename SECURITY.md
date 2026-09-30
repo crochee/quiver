@@ -12,7 +12,7 @@
 **请不要用公开 issue / PR / 讨论区报告安全问题。**
 
 请通过 GitHub 的
-[私有漏洞报告](https://github.com/crochee/dotfiles/security/advisories/new)
+[私有漏洞报告](https://github.com/crochee/quiver/security/advisories/new)
 提交; 若不可用, 联系仓库维护者(crochee)。请在报告里包含:
 
 - 受影响版本/commit;

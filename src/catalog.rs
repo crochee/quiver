@@ -257,8 +257,8 @@ pub struct Cmd {
     /// first non-empty line of stdout to the clipboard (the Wox built-in
     /// `copy-to-clipboard` action). Default `false`: capture commands trade
     /// query latency for feedback, so they opt in explicitly. See
-    /// `docs/wox/README.md` §4.8 for why this lives at query time rather than
-    /// action time.
+    /// `docs/catalog-contract.md §5` for why this lives at query time rather
+    /// than action time.
     pub capture: bool,
     pub enabled: bool,
     pub tags: Vec<String>,
@@ -495,6 +495,14 @@ pub fn score(cmd: &Cmd, needle: &str) -> i64 {
         .map(|best| TAG_TIER + best)
         .unwrap_or(0)
 }
+
+/// Compile-time path to the repo root, used by the shipped-catalog test
+/// below. `CARGO_MANIFEST_DIR` is set by cargo itself; in workspace
+/// layouts it points at the package's directory regardless of where the
+/// build was invoked from. Gated on `cfg(test)` so the const never lands
+/// in the shipping binary.
+#[cfg(test)]
+const REPO_ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 #[cfg(test)]
 mod tests {
@@ -779,6 +787,48 @@ mod tests {
             );
             assert_eq!(catalog.default_interpreter, "bash");
             assert_eq!(catalog.default_working_directory, "/tmp");
+        }
+    }
+
+    /// The shipped sample catalog at `examples/ShellCommands.json` is what
+    /// `make smoke` and any first-time installer exercises against. Pin its
+    /// minimums here so a typo or schema drift surfaces at `cargo test`
+    /// (≈30 s) rather than at the smoke step (≈1 s after a full build),
+    /// and so a `cargo test` run on a fresh checkout catches a broken
+    /// sample even when the smoke harness is skipped.
+    mod shipped {
+        use super::super::load;
+        use crate::test_support::{env_lock, setenv};
+
+        #[test]
+        fn examples_catalog_loads_and_exposes_the_expected_minimum() {
+            let dir = std::path::PathBuf::from(super::super::REPO_ROOT)
+                .join("examples");
+            let _env = env_lock();
+            let _data = unsafe { setenv("WOX_DIRECTORY_USER_DATA", &dir) };
+            let catalog =
+                load().expect("examples/ShellCommands.json must load");
+
+            // The harness relies on these four alias names verbatim — a
+            // rename in the sample breaks every smoke assertion that
+            // references them. Pin the names here so a rename trips a
+            // unit test, not a confusing smoke failure.
+            let aliases: std::collections::HashSet<&str> =
+                catalog.commands.iter().map(|c| c.alias.as_str()).collect();
+            for required in ["echo", "ip", "upper", "now"] {
+                assert!(
+                    aliases.contains(required),
+                    "examples/ShellCommands.json must define `{required}` \
+                     (smoke harness depends on it); got {aliases:?}"
+                );
+            }
+
+            // And one entry must actually be capturable so the capture
+            // branch of the smoke harness has a real runnable sample.
+            assert!(
+                catalog.commands.iter().any(|c| c.capture),
+                "examples catalog must define at least one capture:true entry"
+            );
         }
     }
 }
