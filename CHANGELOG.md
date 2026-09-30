@@ -10,7 +10,12 @@ The format is [Keep a Changelog](https://keepachangelog.com/) 1.1.
 Categories: **Added** / **Changed** / **Fixed** / **Removed** /
 **Deprecated** / **Security**.
 
-## [Unreleased]
+## [0.3.0] — 2026-09-30
+
+MINOR bump — new public CLI (`--version`) and new stub field (`Build`),
+both additive. No breaking changes; old Wox still loads the new stub
+(ignores unknown fields), and old `ShellCommands.json` works with the
+new binary unchanged.
 
 ### Added
 - `--version` / `-V` flag prints the baked-in version, git commit, cargo
@@ -66,7 +71,8 @@ Categories: **Added** / **Changed** / **Fixed** / **Removed** /
 
 ---
 
-[Unreleased]: <https://github.com/crochee/quiver/compare/v0.2.1...HEAD>
+[Unreleased]: <https://github.com/crochee/quiver/compare/v0.3.0...HEAD>
+[0.3.0]: <https://github.com/crochee/quiver/compare/v0.2.1...v0.3.0>
 [0.2.1]: <https://github.com/crochee/quiver/compare/v0.2.0...v0.2.1>
 [0.2.0]: <https://github.com/crochee/quiver/compare/v0.1.0...v0.2.0>
 [0.1.0]: <https://github.com/crochee/quiver/releases/tag/v0.1.0>
