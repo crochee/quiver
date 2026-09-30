@@ -9,7 +9,7 @@ semver、可复现产物、零手工步骤 —— 产物全部由 CI 构建, 人
 - **1.0 起**: 严格 semver —— 破坏性 → MAJOR, 新字段/新能力 → MINOR,
   修复 → PATCH。
 - 公共 API = `ShellCommands.json` 字段契约、触发词、存根元数据、CLI
-  (`--stub` / `--version`)与 JSON-RPC 响应形状。
+  (`stub` 子命令 / `--version` / `-V` / `--help`)与 JSON-RPC 响应形状。
 
 ## 版本固化
 
@@ -17,7 +17,7 @@ semver、可复现产物、零手工步骤 —— 产物全部由 CI 构建, 人
 环境(无 stdin、无 catalog、无网络)都能回放:
 
 ```
-Quiver 0.2.1 5f6d2c9 (release 2026-09-30T12:34:56Z)
+Quiver 0.4.0 5f6d2c9 (release 2026-10-01T12:34:56Z)
   │        │    │        │         │
   │        │    │        │         └─ UTC ISO-8601, 注入 QUIVER_BUILD_TIME
   │        │    │        └─ PROFILE 注入, "release" / "debug"
@@ -32,12 +32,12 @@ Quiver 0.2.1 5f6d2c9 (release 2026-09-30T12:34:56Z)
    让产物字节与 tag 完全对齐, 不依赖宿主机有 `.git/`。
 2. **`git rev-parse HEAD`** —— 本地 `make build` / `make windows`:
    `build.rs` 在 `.git/HEAD` 存在时直接调 git, dev 工作流零配置。
-4. **`"unknown"`** —— `cargo-chef` recipe cook / 无 git 的镜像回退;
-   `--version` 此时打印 `Quiver 0.2.1 (release unknown)`, Build
+3. **`"unknown"`** —— `cargo-chef` recipe cook / 无 git 的镜像回退;
+   `--version` 此时打印 `Quiver 0.4.0 (release unknown)`, Build
    字段从 stub 中省略(Wox UI 看不到 "unknown")。
 
-存根(`--stub`)的 JSON 也带 `Build` 字段, Wox 解析时会忽略未知字段,
-所以旧 Wox 不会因新增字段而拒绝加载。
+存根(`stub` 子命令)的 JSON 也带 `Build` 字段, Wox 解析时会忽略未知
+字段, 所以旧 Wox 不会因新增字段而拒绝加载。
 
 ## 发布步骤
 

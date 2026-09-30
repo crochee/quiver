@@ -45,11 +45,20 @@ keypress: stdin receives one JSON-RPC request, stdout emits one response.
    | Linux / macOS | `~/.local/bin/quiver` (must be on `PATH`) | The stub's shebang resolves the interpreter by basename, so `PATH` lookup is the only way. |
 
 3. **Render the stub** (Wox discovers the plugin by parsing the leading `#`/`//` comment
-   block as JSON; the stub renderer writes exactly that):
+   block as JSON; the stub renderer writes exactly that). The `--path` flag
+   flips the destination to a file; everything else is stdout. The stub
+   layout is picked at compile time (POSIX on Linux/macOS, Windows on
+   Windows) — no layout parameter is needed. The write forms do `mkdir -p`
+   + atomic rename + `chmod 0o755` so no shell glue is needed:
 
    ```sh
-   quiver --stub windows > ~/.wox/wox-user/plugins/scripts/quiver      # Windows
-   quiver --stub posix   > ~/.wox/wox-user/plugins/scripts/quiver.sh   # Linux/macOS
+   quiver stub                         # render host's stub to stdout
+   quiver stub --path                  # write host's stub to the platform's
+                                       # default destination:
+                                       #   Windows : %USERPROFILE%\.wox\wox-user\plugins\scripts\quiver
+                                       #   Linux  : $HOME/.wox/wox-user/plugins/scripts/quiver.sh
+                                       #   macOS  : $HOME/.wox/wox-user/plugins/scripts/quiver.sh
+   quiver stub --path <file>           # write host's stub to <file>
    ```
 
 4. **Reload**: Wox uses fsnotify to watch the plugin directory — drop the files in and

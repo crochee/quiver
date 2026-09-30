@@ -19,7 +19,7 @@ make fmt lint test smoke    # 改动后的全部护栏, 提交前必绿
 make build      # 本机 cargo build --release
 make windows    # docker 多阶段交叉编译出 Windows PE (buildx)
 make test       # 单元测试(含真实子进程的 capture/action 测试)
-make smoke      # 离线端到端: stub/协议/capture/action/日志 37 项
+make smoke      # 离线端到端: stub/协议/capture/action/日志 49 项
 make lint       # rustfmt --check + clippy -D warnings
 ```
 
@@ -30,7 +30,7 @@ make lint       # rustfmt --check + clippy -D warnings
 
 | 模块 | 职责 | 改动前必读 |
 |---|---|---|
-| `main` | 入口: `--stub` 分支或 JSON-RPC serve | — |
+| `main` | 入口: `stub` 子命令或 JSON-RPC serve | — |
 | `identity` | 插件 id/触发词/图标/作者(单一来源) | — |
 | `catalog` | `ShellCommands.json` 装载校验 + 排序 | 模块头 |
 | `fuzzy` | `fuzzy-matcher::skim::SkimMatcherV2` 封装 (ASCII 兜底为子串匹配) | 模块头 |

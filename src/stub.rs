@@ -13,7 +13,12 @@
 //! shebang naming the interpreter by basename, so `quiver` must be on PATH.
 //!
 //! Both flavours are rendered here from `identity`, which keeps the plugin's
-//! identity in Rust and the repository free of generated stub files.
+//! identity in Rust and the repository free of generated stub files. The
+//! `stub` subcommand in `main.rs` picks the host's compile-time layout
+//! (POSIX on Linux / macOS, Windows on Windows); the `--path` flag in the
+//! same subcommand selects the destination, defaulting to the
+//! host-appropriate path under home when no value is supplied (see
+//! [`default_destination`]).
 //!
 //! The metadata fields this module writes (`Id` / `Name` / `Description` /
 //! `Version` / `Build` / `TriggerKeywords` / `SupportedOS` / `Runtime`) are
@@ -35,27 +40,126 @@ pub enum Layout {
 }
 
 impl Layout {
-    /// Parse the `--stub` argument. With no argument, render the flavour that
-    /// suits the host's own Wox (`platform::IS_WINDOWS`, a compile-time const).
-    pub fn from_arg(arg: Option<&str>) -> Self {
-        match arg {
-            Some("windows") => Layout::Windows,
-            Some("posix") => Layout::Posix,
-            Some(other) => {
-                tracing::warn!(
-                    got = other,
-                    "--stub received unknown layout; falling back to host default"
-                );
-                if crate::platform::IS_WINDOWS {
-                    Layout::Windows
-                } else {
-                    Layout::Posix
-                }
-            }
-            _ if crate::platform::IS_WINDOWS => Layout::Windows,
-            _ => Layout::Posix,
+    /// Filename Wox discovers for this layout, paired with the binary the
+    /// launcher is expected to find beside it.
+    ///
+    /// * `Windows`: `quiver` (extension-less) — Wox's Go `exec` appends
+    ///   `PATHEXT` and resolves it to the sibling `quiver.exe`.
+    /// * `Posix`: `quiver.sh` — the Wox directory scan picks up the file by
+    ///   extension; the shebang names `quiver` from `PATH`.
+    ///
+    /// Pinned by [`tests::entry_names_stay_paired_with_their_layouts`].
+    pub fn default_filename(self) -> &'static str {
+        match self {
+            Layout::Windows => "quiver",
+            Layout::Posix => "quiver.sh",
         }
     }
+
+    /// Wox's plugin-script directory **on this host**, resolved as a relative
+    /// path under the user's home. Composition with
+    /// [`crate::platform::home_dir`] is the caller's job — the layout owns
+    /// the per-OS directory *segments*, the host owns the *separator*, and
+    /// the platform module owns the home.
+    ///
+    /// On Windows the segments are joined with backslash (Wox's own Go code
+    /// reads `USERPROFILE\.wox\wox-user\plugins\scripts`); on POSIX, with
+    /// forward slash. The directory tree is the same; only the separator
+    /// tracks the host's filesystem convention. This is what keeps a Linux
+    /// host writing a Windows-layout stub from creating a directory whose
+    /// name is the literal eight-character string `.wox\wox-user\…`.
+    ///
+    /// Returning a relative path (rather than joining with home here) keeps
+    /// this `const`-foldable — `home_dir` reads env vars and so cannot be a
+    /// `const fn`, but the host-aware suffix can and should be.
+    #[cfg(windows)]
+    pub fn default_subdir(self) -> &'static str {
+        // Same segments on both layouts: Wox's plugin-script directory is
+        // identical across host families; the layout only changes the
+        // filename that goes inside it.
+        let _ = self;
+        ".wox\\wox-user\\plugins\\scripts"
+    }
+    #[cfg(not(windows))]
+    pub fn default_subdir(self) -> &'static str {
+        let _ = self;
+        ".wox/wox-user/plugins/scripts"
+    }
+}
+
+/// Compose `home_dir` (compile-time host-aware via the per-layout suffix
+/// inside [`Layout::default_subdir`]) with [`Layout::default_filename`] into
+/// the canonical destination Wox discovers for this layout.
+///
+/// The path is "where Wox expects a `<layout>` stub to live" — the Windows
+/// Wox build reads `USERPROFILE` and joins it with `.wox\wox-user\plugins\scripts`,
+/// the POSIX build reads `HOME` and joins `.wox/wox-user/plugins/scripts`. The
+/// trailing filename is the extension each host's discovery scan requires
+/// (see [`Layout::default_filename`]).
+///
+/// Empty when the home variable is missing — the caller should surface the
+/// failure, since writing to a relative path would silently land in the
+/// process CWD and Wox would never see it.
+pub fn default_destination(layout: Layout) -> String {
+    let home = crate::platform::home_dir();
+    if home.is_empty() {
+        return String::new();
+    }
+    let mut path = home;
+    path.push(std::path::MAIN_SEPARATOR);
+    path.push_str(layout.default_subdir());
+    path.push(std::path::MAIN_SEPARATOR);
+    path.push_str(layout.default_filename());
+    path
+}
+
+/// Render and write the stub to `path`, atomically.
+///
+/// * Creates the parent directory tree (`mkdir -p` semantics) — Wox's plugin
+///   directory may not exist on a fresh machine, and a partial write that
+///   fails because `~/.wox/wox-user/plugins/scripts` is missing silently
+///   disables discovery.
+/// * Writes to a sibling temp file then renames into place — a reader
+///   (Wox's fsnotify watch) never sees a half-written file, so a `capture:
+///   true` entry that reloads the plugin mid-write cannot pick up a stub
+///   that parses to nonsense and disappears from the launcher.
+/// * Sets the POSIX executable bit on the destination — the shebang-named
+///   POSIX stub must be runnable; the Windows stub doesn't need it (and
+///   Windows ignores the mode bits), so we set it on every platform rather
+///   than gating by host (no cost, no behavior change on Windows).
+///
+/// Returns the absolute path actually written, for the caller's logging.
+pub fn write_to_file(
+    layout: Layout,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Sibling-temp rename keeps the rename atomic on every supported host:
+    // POSIX `rename(2)` and Windows `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`
+    // both replace the destination in one step.
+    let tmp = path.with_extension("quiver-tmp");
+    std::fs::write(&tmp, render(layout).as_bytes())?;
+    // Best-effort executable bit (POSIX stub is shebang-named; harmless on
+    // Windows). Surface only as a log — never fail the install because of
+    // a permission tweak.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(&tmp) {
+            let mut perm = meta.permissions();
+            perm.set_mode(0o755);
+            let _ = std::fs::set_permissions(&tmp, perm);
+        }
+    }
+    if let Err(err) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err);
+    }
+    Ok(())
 }
 
 /// Render the full stub file contents.
@@ -261,5 +365,94 @@ mod tests {
             render(Layout::Posix).starts_with("#!/usr/bin/env quiver"),
             "the POSIX stub's shebang names the PATH binary"
         );
+    }
+
+    #[test]
+    fn default_filenames_pair_with_their_layouts() {
+        assert_eq!(Layout::Windows.default_filename(), "quiver");
+        assert_eq!(Layout::Posix.default_filename(), "quiver.sh");
+    }
+
+    #[test]
+    fn default_subdir_uses_host_path_separator_not_layout() {
+        // A Linux host writing a Windows-layout stub (the WSL → Windows
+        // mirror) must still produce forward-slash segments, otherwise the
+        // directory it creates is a single literal name with backslashes.
+        let s = Layout::Windows.default_subdir();
+        assert!(
+            !s.contains('\\'),
+            "Windows layout on a POSIX host must not introduce backslashes, got {s:?}"
+        );
+        assert_eq!(s, Layout::Posix.default_subdir());
+    }
+
+    #[test]
+    fn default_destination_uses_platform_home() {
+        let _lock = crate::test_support::env_lock();
+        // SAFETY: env_lock is held; EnvGuard restores the previous value on drop.
+        let previous =
+            unsafe { crate::test_support::setenv("HOME", "/tmp/qvhome") };
+
+        let dst = default_destination(Layout::Posix);
+        assert_eq!(dst, "/tmp/qvhome/.wox/wox-user/plugins/scripts/quiver.sh");
+
+        let dst_win = default_destination(Layout::Windows);
+        assert!(
+            dst_win.starts_with("/tmp/qvhome/"),
+            "Windows destination should still start with HOME, got {dst_win:?}"
+        );
+        assert!(
+            dst_win.ends_with("/quiver"),
+            "Windows destination should be extension-less, got {dst_win:?}"
+        );
+
+        drop(previous);
+    }
+
+    #[test]
+    fn default_destination_is_empty_when_home_is_missing() {
+        let _lock = crate::test_support::env_lock();
+        // SAFETY: env_lock is held; setting HOME to "" mimics the env lookup
+        // contract that treats empty values as unset.
+        let previous = unsafe { crate::test_support::setenv("HOME", "") };
+        let dst = default_destination(Layout::Posix);
+        assert!(dst.is_empty(), "expected empty, got {dst:?}");
+        drop(previous);
+    }
+
+    #[test]
+    fn write_to_file_replaces_and_chmods() {
+        // `tempfile`-style scoping: build under a unique subdir, then drop
+        // it. Avoids cross-test pollution on the host.
+        let dir = std::env::temp_dir().join("quiver-stub-tests");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let dst = dir.join("write-target.sh");
+
+        // Pre-existing junk proves the rename replaces, not appends.
+        std::fs::write(&dst, "junk that must be replaced").expect("seed");
+        write_to_file(Layout::Posix, &dst).expect("write_to_file");
+        let content = std::fs::read_to_string(&dst).expect("read back");
+        assert!(
+            content.starts_with("#!/usr/bin/env quiver"),
+            "POSIX stub should start with the shebang; got {content:?}"
+        );
+        assert!(
+            !content.contains("junk that must be replaced"),
+            "rename did not replace; got {content:?}"
+        );
+
+        // The .quiver-tmp sibling must not leak past the rename.
+        let tmp = dst.with_extension("quiver-tmp");
+        assert!(!tmp.exists(), "tmp sibling leaked at {tmp:?}");
+
+        // Parent dir creation: a two-level-deep nested path the test
+        // creates fresh must end up populated.
+        let nested = dir.join("nested/deeper/written.sh");
+        write_to_file(Layout::Windows, &nested).expect("nested write");
+        assert!(nested.exists());
+
+        // Clean up. Best-effort; cargo test reruns can take their lumps
+        // with stale temp content.
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

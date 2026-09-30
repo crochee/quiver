@@ -97,10 +97,10 @@ linux-test:
 # (WSL has no x86_64-w64-mingw32-gcc), and `make windows` owns cross builds.
 build:
 	@printf 'target:   %s\n' '$(if $(TARGET),$(TARGET),<host default>)'
-	$(CARGO) build --release
+	$(CARGO) build --release --locked
 
 test:
-	$(CARGO) test --release
+	$(CARGO) test --release --locked
 
 # Offline smoke: drives the JSON-RPC surface against examples/ShellCommands.json
 # without Wox. Useful after editing src/ — proves the wiring (binary, catalog
@@ -113,7 +113,7 @@ test:
 HOST_ARTIFACT := target/release/quiver$(if $(HOST_IS_WINDOWS),.exe,)
 smoke:
 	@printf 'building host-native %s for smoke (default goal on WSL is the cross PE)\n' '$(HOST_ARTIFACT)'
-	$(CARGO) build --release
+	$(CARGO) build --release --locked
 	WOX_QUIVER_EXE='$(CURDIR)/$(HOST_ARTIFACT)' '$(CURDIR)/examples/quiver-smoke.sh'
 
 lint:

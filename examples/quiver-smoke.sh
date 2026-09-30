@@ -177,46 +177,70 @@ expect_matches '--version carries a UTC timestamp' \
 expect_contains '-V is a synonym for --version' \
     "$cargo_version" "$short_out"
 
-# ---- 1. stub renderer: both flavours produce parseable headers ----
+# ---- 1. stub renderer: `stub` prints the host layout to stdout;
+#         `stub --path` writes to the platform default destination;
+#         `stub --path <p>` writes to <p>. The compile-time platform picks
+#         the layout (POSIX on Linux/macOS, Windows on Windows), so a single
+#         smoke check covers the default path. The Windows layout's render
+#         path is covered by stub::tests in the unit-test target.
 printf '\n[1] stub renderer\n'
-stub_posix="$("$exe" --stub posix)"
-stub_win="$("$exe" --stub windows)"
+stub_host="$("$exe" stub)"
 
-expect_matches 'posix stub: starts with shebang naming quiver' \
-    '^#!.*quiver' "$stub_posix"
-expect_matches 'posix stub: line 2 opens the JSON comment block' \
-    '^# \{' "$stub_posix"
-expect_contains 'posix stub: declares Runtime=SCRIPT' \
-    '"Runtime": "SCRIPT"' "$stub_posix"
-expect_contains 'posix stub: declares TriggerKeywords' \
-    '"TriggerKeywords"' "$stub_posix"
-expect_contains 'posix stub: lists `quiver` keyword' \
-    '"quiver"' "$stub_posix"
-expect_contains 'posix stub: lists `qv` keyword' \
-    '"qv"' "$stub_posix"
+expect_matches 'host stub (POSIX on this box): starts with shebang naming quiver' \
+    '^#!.*quiver' "$stub_host"
+expect_matches 'host stub: line 2 opens the JSON comment block' \
+    '^# \{' "$stub_host"
+expect_contains 'host stub: declares Runtime=SCRIPT' \
+    '"Runtime": "SCRIPT"' "$stub_host"
+expect_contains 'host stub: declares TriggerKeywords' \
+    '"TriggerKeywords"' "$stub_host"
+expect_contains 'host stub: lists `quiver` keyword' \
+    '"quiver"' "$stub_host"
+expect_contains 'host stub: lists `qv` keyword' \
+    '"qv"' "$stub_host"
 
-expect_matches 'windows stub: line 1 opens the JSON comment block directly' \
-    '^# \{' "$stub_win"
-expect_contains 'windows stub: declares Runtime=SCRIPT' \
-    '"Runtime": "SCRIPT"' "$stub_win"
+# `stub --path <p>` writes the host layout to a custom file — the explicit
+# path form the install hook uses on a fresh machine.
+stub_path="$(mktemp -t quiver-smoke.XXXXXX.sh)"
+HOME="$here" "$exe" stub --path "$stub_path" >/dev/null 2>&1
+expect_matches 'stub --path <p> writes the host layout to <p>' \
+    '^#!/usr/bin/env quiver' "$(head -1 "$stub_path")"
+expect_contains 'stub --path <p> target is executable (chmod 0o755 applied)' \
+    '-rwxr-xr-x' "$(stat -c '%A' "$stub_path")"
+expect_eq 'stub --path <p> content matches stub stdout byte-for-byte' \
+    "$stub_host" "$(cat "$stub_path")"
+rm -f "$stub_path"
+
+# `stub --path` (no value) writes the host layout to the platform default
+# destination — proves the home-resolving destination path is wired.
+default_dir="$(mktemp -d)"
+HOME="$default_dir" "$exe" stub --path >/dev/null 2>&1
+default_target="$default_dir/.wox/wox-user/plugins/scripts/quiver.sh"
+expect_matches 'stub --path (no value) writes to platform default destination' \
+    '^#!/usr/bin/env quiver' "$(head -1 "$default_target")"
+expect_contains 'stub --path (no value) target is executable' \
+    '-rwxr-xr-x' "$(stat -c '%A' "$default_target")"
+expect_eq 'stub --path (no value) content matches stub stdout byte-for-byte' \
+    "$stub_host" "$(cat "$default_target")"
+rm -rf "$default_dir"
 
 # Baked-in commit: the stub carries the `Build` field with the same commit
 # + (profile timestamp) as `--version`, so operators can diff two artefacts
 # without computing md5s.
 if [[ "$version_out" == *"unknown"* ]]; then
     expect_absent 'stub omits Build field when no commit is discoverable' \
-        '"Build":' "$stub_win"
+        '"Build":' "$stub_host"
 else
-    expect_contains 'windows stub carries Build field with embedded commit' \
-        '"Build":' "$stub_win"
+    expect_contains 'stub carries Build field with embedded commit' \
+        '"Build":' "$stub_host"
     # The `Build` value is `commit (profile timestamp)` — a substring of
     # `--version` once `Quiver VERSION` is dropped. Just probe for the SHA
     # + the profile bracket so the assertion stays focused on the baked-in
     # bits.
     sha="${version_out#Quiver $cargo_version }"
     sha="${sha%% (*}"
-    expect_contains 'windows stub Build field carries the same SHA' \
-        "$sha" "$stub_win"
+    expect_contains 'stub Build field carries the same SHA' \
+        "$sha" "$stub_host"
 fi
 
 # ---- 2. JSON-RPC envelope shape ----
@@ -325,13 +349,9 @@ expect_contains 'QUIVER_LOG=debug: query received emits DEBUG' \
 expect_contains 'QUIVER_LOG=debug: catalog_load path emits DEBUG' \
     ' DEBUG catalog_load path' "$log_debug"
 
-# 7d. QUIVER_LOG=warn + bogus --stub arg → fallback WARN line.
-QUIVER_LOG=warn "$exe" --stub bogus >/dev/null 2>"$tmp_log"
-log_warn="$(cat "$tmp_log")"
-expect_contains 'QUIVER_LOG=warn: unknown --stub arg emits WARN with got' \
-    ' WARN --stub received unknown layout' "$log_warn"
-expect_contains 'QUIVER_LOG=warn: WARN line includes got="bogus"' \
-    'got="bogus"' "$log_warn"
+# 7d. (removed: the layout arg no longer exists, so the unknown-layout
+#     warning is gone; the regression test for an unknown stub layout
+#     arg is moot.)
 
 # 7e. garbage directive → the error floor holds. This is the regression
 #     test for the silence bug: EnvFilter reads a bare word as a *target*,

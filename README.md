@@ -28,13 +28,13 @@ feature surface kept deliberately minimal.
 ## One-line principle
 
 Every alias is data in the catalog; Quiver is just a JSON-RPC bridge between Wox and the
-local shell. The Rust build produces two things: the Wox discovery stub (`--stub`) and
-the actual binary. The stub is also rendered by the binary itself (`src/stub.rs` is the
-single source), so no generated files are tracked.
+local shell. The Rust build produces two things: the Wox discovery stub (`stub`
+subcommand) and the actual binary. The stub is also rendered by the binary itself
+(`src/stub.rs` is the single source), so no generated files are tracked.
 
 ```
 quiver/
-├── Cargo.toml / Cargo.lock         # bin name = quiver; deps = serde + serde_json + tracing + tracing-subscriber + fuzzy-matcher + shellexpand
+├── Cargo.toml / Cargo.lock         # bin name = quiver; deps = clap + serde + serde_json + tracing + tracing-subscriber + fuzzy-matcher + shellexpand
 ├── rust-toolchain                  # local cargo toolchain pin (1.98.1, matches Dockerfile)
 ├── Dockerfile                      # Windows cross-build image (rust:1.98 + mingw-w64)
 ├── .dockerignore                   # build context = source only (no target/)
@@ -58,7 +58,7 @@ quiver/
 
 | Module | Responsibility |
 |---|---|
-| `main` | entry point: `--stub` branch or JSON-RPC `serve` |
+| `main` | entry point: `stub` subcommand or JSON-RPC `serve` |
 | `identity` | plugin id / trigger keywords / icon (single source) |
 | `catalog` | `ShellCommands.json` loader + ranker |
 | `fuzzy` | `fuzzy-matcher::skim::SkimMatcherV2` wrapper (ASCII fallback to substring) |
@@ -152,9 +152,8 @@ Emission sites (edit-and-go):
 | `protocol::query` request received | `debug` | `search`, `alias` |
 | `protocol::action` request received | `debug` | `action` |
 | `protocol::action` detached spawn | `info` | `action`, `interpreter` |
-| `stub::Layout::from_arg` unknown layout | `warn` | `got` |
 | `main::serve` parse failure / stdin failure | `error` | `error` (parse) |
-| `main::emit` stdout write failure / `--stub` write failure | `error` | — |
+| `main::emit` stdout write failure / `stub` write failure | `error` | — |
 
 Sample:
 
@@ -179,9 +178,12 @@ or manually:
 make build
 EXE=target/release/quiver   # WSL: target/release/quiver (same name as cross PE; default goal is PE)
 
-# 1. render the Wox discovery-metadata stub
-"$EXE" --stub posix | head -6          # Linux/macOS shebang layout
-"$EXE" --stub windows | head -6        # Windows PATHEXT layout
+# 1. render the Wox discovery-metadata stub. The layout is picked at
+#    compile time (POSIX on Linux/macOS, Windows on Windows); `--path`
+#    flips the destination to a file (mkdir -p + chmod 0o755).
+"$EXE" stub | head -6                  # host layout to stdout
+"$EXE" stub --path                     # host layout to the platform default
+"$EXE" stub --path /tmp/quiver.sh      # host layout to a custom file
 
 # 2. one-shot query: pipe in stdin, read stdout JSON
 echo '{"jsonrpc":"2.0","id":1,"method":"query","params":{"triggerKeyword":"qv","search":"now"}}' \
@@ -207,7 +209,7 @@ network) prints them on stdout:
 
 ```text
 $ quiver --version
-Quiver 0.2.1 5f6d2c96f028633ff2fb4b8c3b84d0b3f67e3a3a (release 2026-09-30T12:34:56Z)
+Quiver 0.4.0 5f6d2c96f028633ff2fb4b8c3b84d0b3f67e3a3a (release 2026-10-01T12:34:56Z)
 ```
 
 Diffing two artefacts is now `grep` instead of `md5`. Source of truth, in priority

@@ -52,8 +52,8 @@ const ERROR_FLOOR: &str = "error";
 
 /// Initialise the global tracing subscriber. Idempotent — second and
 /// later calls are a no-op (the underlying `try_init` swallows the
-/// "already installed" error), so tests and the `--stub` path can call
-/// it freely without panicking.
+/// "already installed" error), so tests and the `stub` subcommand can
+/// call it freely without panicking.
 pub fn init() {
     static INIT: LazyLock<()> = LazyLock::new(|| {
         let filter = resolve_filter();

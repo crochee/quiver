@@ -10,6 +10,55 @@ The format is [Keep a Changelog](https://keepachangelog.com/) 1.1.
 Categories: **Added** / **Changed** / **Fixed** / **Removed** /
 **Deprecated** / **Security**.
 
+## [Unreleased]
+
+## [0.4.0] — 2026-10-01
+
+MINOR bump — `--stub` is now the `stub` subcommand (`quiver stub [--path
+[<file>]]`), parsed by `clap` instead of a hand-rolled `argv` scan. The
+old flag-style invocation (`quiver --stub ...`) is gone.
+
+### Added
+- `clap` v4 dependency (minimal: `derive` + `std` + `help` + `usage` +
+  `error-context`). Replaces the hand-rolled `argv` parse in `main.rs`;
+  the `stub` subcommand and its `--path` flag are now declarative.
+- `quiver --help` / `-h` prints the auto-generated usage block —
+  `quiver stub --help` is the canonical reference for the three
+  terminal forms (`stub`, `stub --path`, `stub --path <p>`).
+
+### Changed (breaking)
+- The CLI surface is now subcommand-based. Old → new:
+  - `quiver --stub`                  → `quiver stub`
+  - `quiver --stub --path`           → `quiver stub --path`
+  - `quiver --stub --path <file>`    → `quiver stub --path <file>`
+  Old form rejected by clap with a clear "unrecognized argument" error.
+  Catalog format and the JSON-RPC wire protocol are unchanged.
+
+## [0.3.1] — 2026-10-01
+
+PATCH bump — `--stub` CLI gains an optional `--path` flag with three
+terminal forms, replacing the previous positional `<layout>` / `<path>`
+arguments. No wire / runtime / catalog-format change.
+
+### Added
+- `quiver --stub --path [<file>]`:
+  - `quiver --stub`             → host layout (compile-time POSIX on
+    Linux/macOS, Windows on Windows) to stdout
+  - `quiver --stub --path`      → host layout to the platform's default
+    destination (`~/.wox/wox-user/plugins/scripts/...` under `home_dir()`)
+  - `quiver --stub --path <p>`  → host layout to `<p>`
+
+  All write forms do `mkdir -p` + atomic rename + `chmod 0o755` so the
+  install hook collapses from
+  `quiver --stub <layout> > $tmp; cmp; cp; chmod` to a single
+  `quiver --stub --path` (or `quiver --stub --path <file>`). The
+  previous positional `<layout>` argument is gone: the platform is
+  compile-time known.
+
+  When `--path` is present but the home variable is missing (container /
+  CI runner), the binary logs a `warn` and falls back to stdout so the
+  operator still gets the bytes rather than an opaque JSON-RPC error.
+
 ## [0.3.0] — 2026-09-30
 
 MINOR bump — new public CLI (`--version`) and new stub field (`Build`),
@@ -71,7 +120,9 @@ new binary unchanged.
 
 ---
 
-[Unreleased]: <https://github.com/crochee/quiver/compare/v0.3.0...HEAD>
+[Unreleased]: <https://github.com/crochee/quiver/compare/v0.4.0...HEAD>
+[0.4.0]: <https://github.com/crochee/quiver/compare/v0.3.1...v0.4.0>
+[0.3.1]: <https://github.com/crochee/quiver/compare/v0.3.0...v0.3.1>
 [0.3.0]: <https://github.com/crochee/quiver/compare/v0.2.1...v0.3.0>
 [0.2.1]: <https://github.com/crochee/quiver/compare/v0.2.0...v0.2.1>
 [0.2.0]: <https://github.com/crochee/quiver/compare/v0.1.0...v0.2.0>
