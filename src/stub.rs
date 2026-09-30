@@ -14,6 +14,12 @@
 //!
 //! Both flavours are rendered here from `identity`, which keeps the plugin's
 //! identity in Rust and the repository free of generated stub files.
+//!
+//! The metadata fields this module writes (`Id` / `Name` / `Description` /
+//! `Version` / `Build` / `TriggerKeywords` / `SupportedOS` / `Runtime`) are
+//! the wire contract Wox's discovery parser consumes. The authoritative
+//! field reference lives in [`docs/catalog-contract.md`]; any field added
+//! here belongs in a section over there.
 
 use crate::identity;
 
@@ -94,6 +100,14 @@ struct Metadata<'a> {
     author: &'a str,
     #[serde(rename = "Version")]
     version: &'a str,
+    /// `commit (profile timestamp)` from [`identity::build_field`] — Wox
+    /// shows `Version` to users, so the stub adds `Build` for operators
+    /// who need to diff two artefacts by reading the embedded commit.
+    /// Wox ignores unknown fields, so the addition is forward-safe.
+    /// Empty in dev builds without a discoverable HEAD → the field is
+    /// omitted entirely (`skip_serializing_if`).
+    #[serde(rename = "Build", skip_serializing_if = "str::is_empty")]
+    build: String,
     #[serde(rename = "Runtime")]
     runtime: &'static str,
     #[serde(rename = "Website")]
@@ -118,6 +132,11 @@ fn build_metadata() -> serde_json::Value {
         description: identity::DESCRIPTION,
         author: identity::AUTHOR,
         version: identity::VERSION,
+        // Skip the field entirely when `build_field()` is empty (the
+        // `COMMIT == "unknown"` path), so dev builds without a
+        // discoverable HEAD don't smuggle a "unknown" string into the
+        // Wox UI.
+        build: identity::build_field(),
         runtime: "SCRIPT",
         website: identity::WEBSITE,
         icon: identity::ICON,
