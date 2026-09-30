@@ -1,6 +1,7 @@
 # Dependabot 依赖更新(CNCF 维护方式: 依赖自动化、评审人工化)。
 # Rust 依赖走 cargo; GitHub Actions 依赖走 github-actions。
 version: 2
+
 updates:
   - package-ecosystem: cargo
     directory: /
@@ -11,6 +12,11 @@ updates:
     labels: ["dependencies"]
     # MSRV 是契约(Cargo.toml rust-version = 1.91):
     # 任何把 MSRV 顶过它的依赖更新都会被 CI 的 msrv job 拦下。
+    #
+    # 备注: dependabot top-level `groups` 在 2024 后才进入 GA 但
+    # 当前 GitHub Actions 这边某些仓库仍把 groups 判为 schema 之外的
+    # 属性, 加上 weekly dependabot 会 fail。这个 block 等 groups 全面
+    # 稳定再加, 现在保持每周一份默认 PR 的形态。
   - package-ecosystem: github-actions
     directory: /
     schedule:

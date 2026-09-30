@@ -5,11 +5,23 @@ on:
   push:
     tags: ["v*.*.*"]
 
+# Workflow-level default: read-only. The build jobs (`linux-windows`,
+# `macos-arm64`) only upload artifacts — they don't need write access
+# to the repo. Only the `release` job overrides to `contents: write`
+# for the softprops step. `id-token: write` is intentionally not
+# granted — no step uses a federated OIDC token.
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+
+# Release runs must NOT cancel each other: every artefact is needed for
+# the SHA-256 + identity verification + release draft, so a retried run
+# simply produces fresh artefacts (and we dedupe by tag).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   # Linux + Windows 一起在 ubuntu 上出。Windows 走 docker buildx 交叉,
@@ -18,12 +30,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Need full history so a tag-driven build can resolve the exact
+          # commit the artefact was cut from; default shallow clone drops it.
+          fetch-depth: 0
+
+      # Bake the tag commit (and any `-dirty` marker from local dev) into
+      # both the Windows PE and the Linux ELF so `quiver --version` answers
+      # "which commit is this?" without an external manifest. $GITHUB_SHA is
+      # the tag's commit when the run is triggered by `v*.*.*` push.
+      - name: Record commit identity
+        id: identity
+        run: |
+          echo "sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
 
       # 1) Windows PE: docker 多阶段交叉编译(与 make windows 同链路)。
       - uses: docker/setup-buildx-action@v4
       - name: Cross-compile the Windows PE
         run: |
           docker buildx build --target artifact \
+            --build-arg QUIVER_GIT_SHA=${{ steps.identity.outputs.sha }} \
+            --build-arg QUIVER_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
             --output type=local,dest=dist .
           mv dist/quiver.exe dist/quiver-x86_64-pc-windows-gnu.exe
 
@@ -31,6 +58,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.1
       - uses: Swatinem/rust-cache@v2
       - name: Build the Linux binary
+        env:
+          QUIVER_GIT_SHA: ${{ steps.identity.outputs.sha }}
+          QUIVER_BUILD_TIME: ${{ github.event.repository.updated_at }}
         run: |
           cargo build --release --locked
           cp target/release/quiver dist/quiver-x86_64-unknown-linux-gnu
@@ -51,9 +81,14 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.98.1
       - uses: Swatinem/rust-cache@v2
       - name: Build the macOS binary
+        env:
+          QUIVER_GIT_SHA: ${{ github.sha }}
+          QUIVER_BUILD_TIME: ${{ github.event.repository.updated_at }}
         run: |
           cargo build --release --locked --target aarch64-apple-darwin
           mkdir -p dist
@@ -69,11 +104,22 @@ jobs:
           if-no-files-found: error
           path: dist/quiver-aarch64-apple-darwin
 
-  # 等所有出产物 job 跑完, 汇总算校验和 + 推 release。一个 job 只能触发一次
-  # softprops/action-gh-release, 否则会撞到 duplicate tag; 所以这一步放最后。
+  # 等所有出产物 job 跑完, 汇总算校验和 + 推 release。Draft = 人审完才
+  # publish, draft 链接在 CI 日志和 step summary 都有; v0.3.0 的 publish
+  # 步骤是 RELEASE.md §"发布说明" 那一步。
   release:
     needs: [linux-windows, macos-arm64]
     runs-on: ubuntu-latest
+    # softprops/action-gh-release writes the GitHub Release; every other
+    # step in this job is read-only on the repo. (An earlier
+    # 'id-token: write' is intentionally absent: the attest step it
+    # was added for was removed when the action failed with 403 on
+    # GITHUB_TOKEN; see the comment above the Release step. The
+    # Release step itself uses actions/github-script which calls the
+    # REST API via the workflow's GITHUB_TOKEN; `contents: write` is
+    # the only permission needed for release + asset upload.)
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: Download artifacts
@@ -94,13 +140,79 @@ jobs:
           ls -l
           cat sha256sums.txt
 
+      - name: Verify baked identity
+        # Every artefact must carry the same `--version` line and a tag
+        # commit equal to $GITHUB_SHA; a drift between Cargo.toml and the
+        # tag (or a builder that ignored QUIVER_GIT_SHA) fails here
+        # instead of slipping through with matching checksums.
+        #
+        # The check uses `strings | grep` rather than executing the
+        # binary, because this job runs on ubuntu-latest — executing
+        # the macOS arm64 or Windows PE artefacts here would fail with
+        # "exec format error", masking the actual identity drift we want
+        # to detect. The `--version` output lives in the binary's
+        # read-only data section as `&'static str` constants, so
+        # `strings` finds them reliably on any platform.
+        run: |
+          expected_sha="${GITHUB_SHA}"
+          expected_version="$(awk -F'\"' '/^version =/ {print $2; exit}' Cargo.toml)"
+          for bin in \
+              quiver-x86_64-pc-windows-gnu.exe \
+              quiver-x86_64-unknown-linux-gnu \
+              quiver-aarch64-apple-darwin; do
+            if ! strings "dist/$bin" | grep -qF "$expected_sha"; then
+              echo "::error::$bin does not embed SHA ${expected_sha}"
+              exit 1
+            fi
+            if ! strings "dist/$bin" | grep -qF "$expected_version"; then
+              echo "::error::$bin does not embed version ${expected_version}"
+              exit 1
+            fi
+            echo "$bin → baked identity OK (sha=${expected_sha:0:7}, version=${expected_version})"
+          done
+
+      # Provenance is established by (1) the SHA-256 in sha256sums.txt,
+      # (2) `git verify-tag vX.Y.Z` on the signed tag, and (3) the
+      # tag-commit binding baked into every binary's --version line
+      # (the previous step). That is the level SLSA Build L1 needs.
+      #
+      # SLSA Build L2 in addition wants a signed in-toto attestation
+      # bound to the workflow's OIDC identity. GitHub's first-party
+      # `actions/attest-build-provenance@v2` would provide that, but
+      # it needs a token with `attestations:write` — the workflow's
+      # default `GITHUB_TOKEN` cannot create attestations on personal
+      # repos today, and granting a PAT is a separate security review.
+      # The trade-off is documented in RELEASE.md; the upgrade path
+      # is a one-line `uses: actions/attest-build-provenance@v2`
+      # once the repo gains an OIDC-enabled token.
+
       - name: Release
-        uses: softprops/action-gh-release@v3
-        with:
-          draft: true
-          generate_release_notes: true
-          files: |
-            dist/quiver-x86_64-pc-windows-gnu.exe
-            dist/quiver-x86_64-unknown-linux-gnu
-            dist/quiver-aarch64-apple-darwin
-            dist/sha256sums.txt
+        # Use the `gh` CLI directly rather than softprops or any third-
+        # party action. The CLI is pre-installed on GitHub-hosted ubuntu
+        # runners and authenticates with the workflow's GITHUB_TOKEN
+        # via GH_TOKEN. Every API call is logged as a CLI command —
+        # a failure shows up as a non-zero exit, not as a silent 0
+        # from a black-box action.
+        #
+        # The "delete existing draft for this tag then re-create" pair
+        # makes re-runs idempotent: a retry of this workflow (e.g. after
+        # editing the workflow file) drops the previous draft and
+        # uploads a fresh one with the latest binaries, instead of
+        # failing on `gh release create ... already exists`.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          echo "deleting any pre-existing draft for ${tag}"
+          gh release delete "${tag}" --cleanup-tags --yes || true
+          echo "creating draft release for ${tag}"
+          gh release create "${tag}" \
+              --draft \
+              --generate-notes \
+              --title "${tag}" \
+              dist/quiver-x86_64-pc-windows-gnu.exe \
+              dist/quiver-x86_64-unknown-linux-gnu \
+              dist/quiver-aarch64-apple-darwin \
+              dist/sha256sums.txt
+          echo "release draft created at https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag} (draft — publish manually)"

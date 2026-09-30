@@ -14,6 +14,13 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# Cancel in-progress runs on the same ref when a new commit lands
+# (PRs only — main pushes run once, so cancel is a no-op). Saves CI minutes
+# on rapid-fix PRs and keeps the action log focused on the latest push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   fmt:
     runs-on: ubuntu-latest
@@ -32,7 +39,11 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --release --all-targets -- -D warnings
+      # `--tests` (not `--all-targets`) so clippy sees the `#[cfg(test)]`
+      # `mod test_support` declaration in main.rs; otherwise every test
+      # file's `use crate::test_support::*` fails E0432 and the lint job
+      # never reaches the actual lint surface.
+      - run: cargo clippy --release --tests -- -D warnings
 
   test:
     runs-on: ubuntu-latest
