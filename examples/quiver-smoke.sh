@@ -158,6 +158,25 @@ call() {
 JSON
 }
 
+# ---- 0. --version is the first probe: if it doesn't print a parseable
+#         identity line, every later check is suspect. Reads `Cargo.toml`
+#         via python so we don't depend on jq or grep -P. ----
+printf '\n[0] version probe\n'
+cargo_version="$(python3 -c 'import re,sys; \
+    print(re.search(r"^version = \"([^\"]+)\"", open("'"$here/../Cargo.toml"'").read(), re.M).group(1))')"
+version_out="$("$exe" --version)"
+short_out="$("$exe" -V)"
+expect_matches '--version starts with `Quiver`' \
+    '^Quiver ' "$version_out"
+expect_contains '--version reports the Cargo.toml version verbatim' \
+    "$cargo_version" "$version_out"
+expect_contains '--version carries the cargo profile (release / debug)' \
+    '(release ' "$version_out"
+expect_matches '--version carries a UTC timestamp' \
+    ' [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\)' "$version_out"
+expect_contains '-V is a synonym for --version' \
+    "$cargo_version" "$short_out"
+
 # ---- 1. stub renderer: both flavours produce parseable headers ----
 printf '\n[1] stub renderer\n'
 stub_posix="$("$exe" --stub posix)"
@@ -180,6 +199,25 @@ expect_matches 'windows stub: line 1 opens the JSON comment block directly' \
     '^# \{' "$stub_win"
 expect_contains 'windows stub: declares Runtime=SCRIPT' \
     '"Runtime": "SCRIPT"' "$stub_win"
+
+# Baked-in commit: the stub carries the `Build` field with the same commit
+# + (profile timestamp) as `--version`, so operators can diff two artefacts
+# without computing md5s.
+if [[ "$version_out" == *"unknown"* ]]; then
+    expect_absent 'stub omits Build field when no commit is discoverable' \
+        '"Build":' "$stub_win"
+else
+    expect_contains 'windows stub carries Build field with embedded commit' \
+        '"Build":' "$stub_win"
+    # The `Build` value is `commit (profile timestamp)` — a substring of
+    # `--version` once `Quiver VERSION` is dropped. Just probe for the SHA
+    # + the profile bracket so the assertion stays focused on the baked-in
+    # bits.
+    sha="${version_out#Quiver $cargo_version }"
+    sha="${sha%% (*}"
+    expect_contains 'windows stub Build field carries the same SHA' \
+        "$sha" "$stub_win"
+fi
 
 # ---- 2. JSON-RPC envelope shape ----
 printf '\n[2] JSON-RPC envelope\n'
