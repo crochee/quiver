@@ -1,6 +1,20 @@
 # Dependabot 依赖更新(CNCF 维护方式: 依赖自动化、评审人工化)。
 # Rust 依赖走 cargo; GitHub Actions 依赖走 github-actions。
 version: 2
+
+# Group minor / patch bumps of well-behaved crates into a single weekly PR.
+# Major bumps + first-time additions still land as their own PR for a
+# dedicated review. Cuts dependabot traffic from ~6 PRs/week to ~1.
+groups:
+  cargo-minor-and-patch:
+    patterns: ["*"]
+    update-types: ["minor", "patch"]
+    exclude-patterns:
+      # Anything that needs a dedicated review (security or behaviour).
+      - "serde*"
+      - "serde_json*"
+      - "tracing*"
+
 updates:
   - package-ecosystem: cargo
     directory: /
@@ -9,6 +23,7 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     labels: ["dependencies"]
+    groups: ["cargo-minor-and-patch"]
     # MSRV 是契约(Cargo.toml rust-version = 1.91):
     # 任何把 MSRV 顶过它的依赖更新都会被 CI 的 msrv job 拦下。
   - package-ecosystem: github-actions

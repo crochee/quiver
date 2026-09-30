@@ -5,11 +5,23 @@ on:
   push:
     tags: ["v*.*.*"]
 
+# Workflow-level default: read-only. The build jobs (`linux-windows`,
+# `macos-arm64`) only upload artifacts — they don't need write access
+# to the repo. Only the `release` job overrides to `contents: write`
+# for the softprops step. `id-token: write` is intentionally not
+# granted — no step uses a federated OIDC token.
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+
+# Release runs must NOT cancel each other: every artefact is needed for
+# the SHA-256 + identity verification + release draft, so a retried run
+# simply produces fresh artefacts (and we dedupe by tag).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   # Linux + Windows 一起在 ubuntu 上出。Windows 走 docker buildx 交叉,
@@ -18,12 +30,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Need full history so a tag-driven build can resolve the exact
+          # commit the artefact was cut from; default shallow clone drops it.
+          fetch-depth: 0
+
+      # Bake the tag commit (and any `-dirty` marker from local dev) into
+      # both the Windows PE and the Linux ELF so `quiver --version` answers
+      # "which commit is this?" without an external manifest. $GITHUB_SHA is
+      # the tag's commit when the run is triggered by `v*.*.*` push.
+      - name: Record commit identity
+        id: identity
+        run: |
+          echo "sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
 
       # 1) Windows PE: docker 多阶段交叉编译(与 make windows 同链路)。
       - uses: docker/setup-buildx-action@v4
       - name: Cross-compile the Windows PE
         run: |
           docker buildx build --target artifact \
+            --build-arg QUIVER_GIT_SHA=${{ steps.identity.outputs.sha }} \
+            --build-arg QUIVER_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
             --output type=local,dest=dist .
           mv dist/quiver.exe dist/quiver-x86_64-pc-windows-gnu.exe
 
@@ -31,6 +58,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.1
       - uses: Swatinem/rust-cache@v2
       - name: Build the Linux binary
+        env:
+          QUIVER_GIT_SHA: ${{ steps.identity.outputs.sha }}
+          QUIVER_BUILD_TIME: ${{ github.event.repository.updated_at }}
         run: |
           cargo build --release --locked
           cp target/release/quiver dist/quiver-x86_64-unknown-linux-gnu
@@ -51,9 +81,14 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.98.1
       - uses: Swatinem/rust-cache@v2
       - name: Build the macOS binary
+        env:
+          QUIVER_GIT_SHA: ${{ github.sha }}
+          QUIVER_BUILD_TIME: ${{ github.event.repository.updated_at }}
         run: |
           cargo build --release --locked --target aarch64-apple-darwin
           mkdir -p dist
@@ -74,6 +109,10 @@ jobs:
   release:
     needs: [linux-windows, macos-arm64]
     runs-on: ubuntu-latest
+    # softprops/action-gh-release writes the GitHub Release; every other
+    # step in this job is read-only on the repo.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: Download artifacts
@@ -93,6 +132,42 @@ jobs:
           sha256sum * > sha256sums.txt
           ls -l
           cat sha256sums.txt
+
+      - name: Verify baked identity
+        # Every artefact must carry the same `--version` line and a tag
+        # commit equal to $GITHUB_SHA; a drift between Cargo.toml and the
+        # tag (or a builder that ignored QUIVER_GIT_SHA) fails here
+        # instead of slipping through with matching checksums.
+        run: |
+          expected_sha="${GITHUB_SHA}"
+          expected_version="$(awk -F'\"' '/^version =/ {print $2; exit}' Cargo.toml)"
+          for bin in \
+              quiver-x86_64-pc-windows-gnu.exe \
+              quiver-x86_64-unknown-linux-gnu \
+              quiver-aarch64-apple-darwin; do
+            out="$(dist/"$bin" --version)"
+            echo "$bin → $out"
+            case "$out" in
+              *"${expected_version}"*) ;;
+              *) echo "::error::$bin reports version $out, expected ${expected_version}"; exit 1;;
+            esac
+            case "$out" in
+              *"${expected_sha}"*) ;;
+              *) echo "::error::$bin reports commit missing ${expected_sha}"; exit 1;;
+            esac
+          done
+
+      - name: Attest build provenance
+        # SLSA Build Level 2 attestation for every binary + the checksums
+        # file. GitHub first-party action (OIDC-bound to this workflow
+        # run, no extra token needed beyond the default `GITHUB_TOKEN`):
+        # anyone with `gh attestation verify` can confirm the artefacts
+        # were produced by this exact tag-and-commit, and the GitHub UI
+        # shows a "Verified" badge on each release asset. Replaces the
+        # earlier Sigstore + CycloneDX dance with one boring step.
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: dist/sha256sums.txt
 
       - name: Release
         uses: softprops/action-gh-release@v3
