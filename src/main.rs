@@ -59,6 +59,13 @@ fn main() {
     log::init();
 
     let argv: Vec<String> = std::env::args().collect();
+    // `--version` / `-V` short-circuits before any I/O so it works in a
+    // totally empty environment (no stdin, no WOX_DIRECTORY_USER_DATA) —
+    // useful when the operator just needs to confirm what they unpacked.
+    if argv[1..].iter().any(|a| a == "--version" || a == "-V") {
+        println!("{} {}", identity::NAME, identity::full_version());
+        return;
+    }
     // Locate `--stub` and the layout name that may follow it in a single
     // pass over argv. `--stub` is positional — argv[0] is the binary name.
     // `position()` on `[1..]` returns a slice-relative index `i`; the
